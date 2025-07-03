@@ -54,7 +54,7 @@ class data_sampler_CFRL(object):
             config.data_file = os.path.join(config.data_path, "data_with_marker.json")
             config.relation_file = os.path.join(config.data_path, "id2rel.json")
             
-            config.relation_description = os.path.join(config.data_path, config.task_name, "relation_description.txt")
+            config.relation_description = os.path.join(config.data_path, config.task_name, "relation_description_new.txt")
 
         elif config.task_name == 'TACRED':
             config.data_file = os.path.join(config.data_path, "data_with_marker_tacred.json")
