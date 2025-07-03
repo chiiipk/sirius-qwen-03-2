@@ -48,16 +48,19 @@ class data_sampler_CFRL(object):
         self.seen_descriptions = {}
         self.rel2des, self.id2des = self._read_descriptions(self.config.relation_description)
 
+
     def set_path(self, config):
         if config.task_name == 'FewRel':
             config.data_file = os.path.join(config.data_path, "data_with_marker.json")
             config.relation_file = os.path.join(config.data_path, "id2rel.json")
-            config.relation_description = os.path.join(config.data_path, "relation_description.txt")
+            
+            config.relation_description = os.path.join(config.data_path, config.task_name, "relation_description.txt")
+
         elif config.task_name == 'TACRED':
             config.data_file = os.path.join(config.data_path, "data_with_marker_tacred.json")
             config.relation_file = os.path.join(config.data_path, "id2rel_tacred.json")
-            config.relation_description = os.path.join(config.data_path, "relation_description_tacred.txt")
-
+            
+            config.relation_description = os.path.join(config.data_path, config.task_name, "relation_description.txt")
     def set_seed(self, seed):
         if seed is not None:
             self.seed = seed
