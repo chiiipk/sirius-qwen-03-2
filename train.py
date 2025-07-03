@@ -297,21 +297,38 @@ class Manager(object):
         return [float(acc) for acc in total_acc2]
 
 
+# File: train.py
+# ... (Toàn bộ phần code bên trên giữ nguyên không đổi) ...
+
+
+# ======================================================================
+# --- THAY THẾ TOÀN BỘ PHẦN DƯỚI ĐÂY ---
+# ======================================================================
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    
+    # --- THÊM LẠI CÁC THAM SỐ BỊ THIẾU ---
     parser.add_argument("--task_name", default="FewRel", type=str)
     parser.add_argument("--num_k", default=5, type=int)
-    parser.add_argument("--lambda_4", default=0.25, type=float)
     parser.add_argument("--seed", default=None, type=int, help="Chạy với một seed duy nhất")
+    
+    # Các tham số cho hàm loss và các logic khác
+    parser.add_argument("--lambda_1", default=1, type=float)
+    parser.add_argument("--lambda_2", default=1, type=float)
+    parser.add_argument("--lambda_3", default=0.25, type=float)
+    parser.add_argument("--lambda_4", default=0.25, type=float)
+    parser.add_argument("--temperature", default=0.01, type=float)
+    parser.add_argument("--distance_threshold", default=0.1, type=float)
+
     args = parser.parse_args()
 
     config = Config('config.ini')
     for key, value in vars(args).items():
-        if value is not None: setattr(config, key, value)
+        if value is not None: 
+            setattr(config, key, value)
     
     config.device = torch.device(config.device if torch.cuda.is_available() else "cpu")
-
-
 
     print(f'Task={config.task_name}, Model={config.model}')
     
@@ -338,7 +355,9 @@ if __name__ == '__main__':
             mean_accs, std_accs = np.mean(accs_array, axis=0), np.std(accs_array, axis=0)
             print("Độ chính xác trung bình qua các tác vụ:\n", np.around(mean_accs, 4))
             print("\nĐộ lệch chuẩn qua các tác vụ:\n", np.around(std_accs, 4))
-            if len(mean_accs) > 0: print(f"\nKết quả tác vụ cuối cùng: Trung bình={mean_accs[-1]:.4f}, Std={std_accs[-1]:.4f}")
+            if len(mean_accs) > 0: 
+                print(f"\nKết quả tác vụ cuối cùng: Trung bình={mean_accs[-1]:.4f}, Std={std_accs[-1]:.4f}")
         else:
             print("Độ chính xác qua các tác vụ:\n", np.around(accs_array[0], 4))
-            if len(accs_array[0]) > 0: print(f"\nKết quả tác vụ cuối cùng: {accs_array[0][-1]:.4f}")
+            if len(accs_array[0]) > 0: 
+                print(f"\nKết quả tác vụ cuối cùng: {accs_array[0][-1]:.4f}")
