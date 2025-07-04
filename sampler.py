@@ -147,7 +147,7 @@ class data_sampler_CFRL(object):
 
         # Phần kiểm tra cuối cùng này vẫn rất hữu ích để phòng trường hợp
         # một quan hệ nào đó có trong id2rel.json nhưng hoàn toàn không có trong file description
-        for rel_id, rel_name in self.id2rel.items():
+        for rel_id, rel_name in enumerate(self.id2rel):
             if rel_id not in id2des:
                 print(f"CẢNH BÁO: Quan hệ '{rel_name}' (ID: {rel_id}) không được tìm thấy trong file mô tả. Sử dụng tên làm mô tả mặc định.")
                 id2des[rel_id] = [rel_name]
