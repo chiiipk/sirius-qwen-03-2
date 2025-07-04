@@ -159,26 +159,26 @@ class Manager(object):
                   sys.stdout.flush()
           print('')
         
-        data_loader = get_data_loader(self.config, dataset, shuffle=False, drop_last=False, batch_size=64)
-        features = []
-        encoder.eval()
-        for step, (instance, label, idx) in enumerate(data_loader):
+          data_loader = get_data_loader(self.config, dataset, shuffle=False, drop_last=False, batch_size=64)
+          features = []
+          encoder.eval()
+          for step, (instance, label, idx) in enumerate(data_loader):
             with torch.no_grad():
                 for k in instance.keys(): instance[k] = instance[k].to(self.config.device)
                 hidden = encoder(instance)
                 features.append(hidden.detach().cpu().float())
-        features = torch.cat(features, dim=0).numpy()
+          features = torch.cat(features, dim=0).numpy()
         
-        num_clusters = M
-        distances = KMeans(n_clusters=num_clusters, random_state=self.config.seed, n_init=10).fit_transform(features)
+          num_clusters = M
+          distances = KMeans(n_clusters=num_clusters, random_state=self.config.seed, n_init=10).fit_transform(features)
         
-        mem_set = []
-        for k in range(num_clusters):
+          mem_set = []
+          for k in range(num_clusters):
             sel_index = np.argmin(distances[:, k])
             if sel_index != -1:
                 mem_set.append(dataset[sel_index])
                 distances[sel_index, :] = np.inf
-        return mem_set
+          return mem_set
 
     # Giữ lại các hàm gốc train_model và eval... từ codebase của bạn
     # Dán nội dung của chúng vào đây
