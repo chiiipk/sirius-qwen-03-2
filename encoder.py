@@ -73,7 +73,7 @@ class EncodingModel(nn.Module):
             final_embedding = (h_state + t_state) / 2
             return final_embedding
         
-        else: # Logic cho các trường hợp khác không đổi
+        else: 
             if is_des:
                 input_mask_expanded = attention_mask.unsqueeze(-1).expand(outputs_words.size()).float()
                 sum_embeddings = torch.sum(outputs_words * input_mask_expanded, 1)
