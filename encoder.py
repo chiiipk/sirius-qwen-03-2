@@ -39,33 +39,48 @@ class EncodingModel(nn.Module):
         last_token_embeddings = hidden_states[batch_range, sequence_lengths]
         return last_token_embeddings
 
+# File: encoder.py
+
+# ... (các hàm __init__ và get_last_token_embedding giữ nguyên) ...
+
+    # --- THAY THẾ TOÀN BỘ HÀM NÀY BẰNG PHIÊN BẢN MỚI ---
     def forward(self, inputs, is_des=False):
         batch_size = inputs['ids'].size(0)
         attention_mask = inputs['mask']
 
-        outputs = self.encoder(input_ids=inputs['ids'], attention_mask=attention_mask)
+        # inputs['ids'] đã ở trên GPU, chúng ta sẽ giữ nó ở đó
+        input_ids_gpu = inputs['ids']
+
+        outputs = self.encoder(input_ids=input_ids_gpu, attention_mask=attention_mask)
         outputs_words = outputs.last_hidden_state
         
-        # --- KHÔI PHỤC: Logic xử lý marker ---
         if self.config.pattern == 'marker':
-            h1, t1 = [], []
-            for i in range(batch_size):
-                # Tìm vị trí của các ID marker trong chuỗi input
-                ids = inputs['ids'][i].cpu().numpy()
-                h1_index = np.argwhere(ids == self.config.h_ids)
-                t1_index = np.argwhere(ids == self.config.t_ids)
-                
-                # Nếu tìm thấy, lấy vị trí đầu tiên. Nếu không, mặc định là 0 (CLS token)
-                h1.append(h1_index[0][0] if h1_index.size > 0 else 0)
-                t1.append(t1_index[0][0] if t1_index.size > 0 else 0)
+            # --- LOGIC MỚI (Vector hóa, chạy hoàn toàn trên GPU) ---
+            # Tạo một mask boolean cho head và tail markers trên toàn bộ batch
+            h_mask = (input_ids_gpu == self.config.h_ids)
+            t_mask = (input_ids_gpu == self.config.t_ids)
+
+            # Dùng argmax để tìm chỉ số của marker đầu tiên cho mỗi câu trong batch
+            # .long() để đảm bảo kiểu dữ liệu là integer cho việc lấy chỉ số
+            h1_indices = torch.argmax(h_mask.long(), dim=1)
+            t1_indices = torch.argmax(t_mask.long(), dim=1)
             
-            # Lấy hidden state tại vị trí của các marker
-            h_state = outputs_words[torch.arange(batch_size), torch.tensor(h1)]
-            t_state = outputs_words[torch.arange(batch_size), torch.tensor(t1)]
+            # Lấy hidden state tại vị trí của các marker một cách hiệu quả
+            h_state = outputs_words[torch.arange(batch_size), h1_indices]
+            t_state = outputs_words[torch.arange(batch_size), t1_indices]
             
             # Kết hợp embedding của head và tail
             final_embedding = (h_state + t_state) / 2
             return final_embedding
+        
+        else: # Logic cho các trường hợp khác không đổi
+            if is_des:
+                input_mask_expanded = attention_mask.unsqueeze(-1).expand(outputs_words.size()).float()
+                sum_embeddings = torch.sum(outputs_words * input_mask_expanded, 1)
+                sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+                return sum_embeddings / sum_mask
+            else:
+                return self.get_last_token_embedding(outputs_words, attention_mask)
         
         # --- Logic cho các trường hợp khác hoặc mặc định ---
         else: # 'cls' hoặc các pattern khác không dùng marker
