@@ -117,12 +117,41 @@ class data_sampler_CFRL(object):
         try:
             with open(file, 'r', encoding='utf-8') as f:
                 for line in f:
-                    parts = line.strip().split('\t')
+                    line = line.strip()
+                    if not line:  # Bỏ qua các dòng trống
+                        continue
+
+                    # --- PHẦN SỬA LỖI QUAN TRỌNG NHẤT ---
+                    # Tách dòng thành 3 phần: ID, Tên, và Mô tả (toàn bộ phần còn lại)
+                    # maxsplit=2 sẽ tách tối đa 2 lần, đảm bảo mô tả chứa dấu cách không bị vỡ
+                    parts = line.split(maxsplit=2)
+                    
                     if len(parts) >= 3:
-                        rel_name, description = parts[1], parts[2]
+                        # parts[0] là ID (ví dụ: 'NA'), parts[1] là tên (ví dụ: 'P1411')
+                        rel_name = parts[1]
+                        description = parts[2]
+                        
                         if rel_name in self.rel2id:
                             rel_id = self.rel2id[rel_name]
                             rel2des[rel_name] = description
                             id2des[rel_id] = [description] # Giữ định dạng là list
-        except FileNotFoundError: print(f"Cảnh báo: Không tìm thấy file description tại {file}")
+                    elif len(parts) == 2:
+                        # Trường hợp phòng thủ: Nếu dòng chỉ có ID và tên, không có mô tả
+                        rel_name = parts[1]
+                        if rel_name in self.rel2id:
+                            print(f"CẢNH BÁO: Quan hệ '{rel_name}' có trong file nhưng thiếu mô tả. Sử dụng tên làm mô tả mặc định.")
+                            rel_id = self.rel2id[rel_name]
+                            rel2des[rel_name] = rel_name
+                            id2des[rel_id] = [rel_name]
+
+        except FileNotFoundError:
+            print(f"CẢNH BÁO: Không tìm thấy file description tại {file}")
+
+        for rel_id, rel_name in self.id2rel.items():
+            if rel_id not in id2des:
+                print(f"CẢNH BÁO: Quan hệ '{rel_name}' (ID: {rel_id}) không được tìm thấy trong file mô tả. Sử dụng tên làm mô tả mặc định.")
+                id2des[rel_id] = [rel_name]
+                rel2des[rel_name] = rel_name
+
         return rel2des, id2des
+
