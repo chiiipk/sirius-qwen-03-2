@@ -28,7 +28,6 @@ class EncodingModel(nn.Module):
         # --- KHÔI PHỤC: Định nghĩa các ID cho marker ---
         # Đây là bước kết nối quan trọng bị thiếu trước đây
         if self.config.pattern == 'marker':
-            # Lấy ID của các token marker từ tokenizer
             self.config.h_ids = self.tokenizer.convert_tokens_to_ids("[E11]")
             self.config.t_ids = self.tokenizer.convert_tokens_to_ids("[E21]")
             print(f"--- Marker IDs đã được thiết lập: H_ID={self.config.h_ids}, T_ID={self.config.t_ids} ---")
@@ -83,7 +82,7 @@ class EncodingModel(nn.Module):
                 return self.get_last_token_embedding(outputs_words, attention_mask)
         
         # --- Logic cho các trường hợp khác hoặc mặc định ---
-        else: # 'cls' hoặc các pattern khác không dùng marker
+        else: 
             if is_des:
                 input_mask_expanded = attention_mask.unsqueeze(-1).expand(outputs_words.size()).float()
                 sum_embeddings = torch.sum(outputs_words * input_mask_expanded, 1)
