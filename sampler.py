@@ -112,41 +112,41 @@ class data_sampler_CFRL(object):
         id2rel = json.load(open(file, 'r', encoding='utf-8'))
         return id2rel, {name: i for i, name in enumerate(id2rel)}
 
+# File: sampler.py
+
+# ... (các hàm khác giữ nguyên) ...
+
+    # --- THAY THẾ TOÀN BỘ HÀM NÀY BẰNG PHIÊN BẢN CUỐI CÙNG ---
     def _read_descriptions(self, file):
         rel2des, id2des = {}, {}
         try:
             with open(file, 'r', encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
-                    if not line:  # Bỏ qua các dòng trống
+                    if not line:
                         continue
 
-                    # --- PHẦN SỬA LỖI QUAN TRỌNG NHẤT ---
-                    # Tách dòng thành 3 phần: ID, Tên, và Mô tả (toàn bộ phần còn lại)
-                    # maxsplit=2 sẽ tách tối đa 2 lần, đảm bảo mô tả chứa dấu cách không bị vỡ
-                    parts = line.split(maxsplit=2)
+                    # --- LOGIC ĐỌC ĐÚNG THEO DỮ LIỆU CỦA BẠN ---
+                    # Tách dòng chỉ 1 lần duy nhất, lấy ra 2 phần:
+                    # phần 1 là Tên Quan Hệ, phần 2 là toàn bộ mô tả còn lại.
+                    parts = line.split(None, 1)
                     
-                    if len(parts) >= 3:
-                        # parts[0] là ID (ví dụ: 'NA'), parts[1] là tên (ví dụ: 'P1411')
-                        rel_name = parts[1]
-                        description = parts[2]
+                    if len(parts) >= 2:
+                        # Bây giờ parts[0] chính là tên quan hệ (ví dụ: 'P1411')
+                        rel_name = parts[0]
+                        description = parts[1]
                         
+                        # Chỉ xử lý nếu tên quan hệ này hợp lệ (có trong id2rel.json)
                         if rel_name in self.rel2id:
                             rel_id = self.rel2id[rel_name]
                             rel2des[rel_name] = description
                             id2des[rel_id] = [description] # Giữ định dạng là list
-                    elif len(parts) == 2:
-                        # Trường hợp phòng thủ: Nếu dòng chỉ có ID và tên, không có mô tả
-                        rel_name = parts[1]
-                        if rel_name in self.rel2id:
-                            print(f"CẢNH BÁO: Quan hệ '{rel_name}' có trong file nhưng thiếu mô tả. Sử dụng tên làm mô tả mặc định.")
-                            rel_id = self.rel2id[rel_name]
-                            rel2des[rel_name] = rel_name
-                            id2des[rel_id] = [rel_name]
 
         except FileNotFoundError:
             print(f"CẢNH BÁO: Không tìm thấy file description tại {file}")
 
+        # Phần kiểm tra cuối cùng này vẫn rất hữu ích để phòng trường hợp
+        # một quan hệ nào đó có trong id2rel.json nhưng hoàn toàn không có trong file description
         for rel_id, rel_name in self.id2rel.items():
             if rel_id not in id2des:
                 print(f"CẢNH BÁO: Quan hệ '{rel_name}' (ID: {rel_id}) không được tìm thấy trong file mô tả. Sử dụng tên làm mô tả mặc định.")
@@ -154,4 +154,6 @@ class data_sampler_CFRL(object):
                 rel2des[rel_name] = rel_name
 
         return rel2des, id2des
+
+# ... (các hàm khác giữ nguyên) ...
 
