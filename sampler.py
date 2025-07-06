@@ -60,44 +60,44 @@ def _extract_entity_info(tokens, start_marker, end_marker):
 
 class data_sampler_CFRL(object):
 
+    # Trong file sampler.py, thay thế hàm __init__ cũ bằng hàm này
+
     def __init__(self, config, seed=None):
         self.config = config
-        self.set_path(self.config)
+        self.seed = seed
+
+        # --- BƯỚC 1: Cấu hình đường dẫn động dựa trên task_name ---
+        self._configure_paths()
+
+        # --- BƯỚC 2: Tải tokenizer ---
+        # (Giả sử bạn đã có hàm _initialize_tokenizer hoặc get_tokenizer)
         self.tokenizer = get_tokenizer(self.config)
 
-        # --- Bước 1: Đọc thông tin quan hệ TRƯỚC TIÊN ---
+        # --- BƯỚC 3: Đọc thông tin quan hệ TRƯỚC TIÊN ---
         self.id2rel, self.rel2id = self._read_relations(self.config.relation_file)
         self.config.num_of_relation = len(self.id2rel)
         
-        # --- Bước 2: Bây giờ mới thiết lập seed, vì set_seed cần id2rel ---
-        self.seed = seed
+        # --- BƯỚC 4: Bây giờ mới thiết lập seed, vì set_seed cần id2rel ---
         self.set_seed(self.seed)
         
-        # --- Các bước còn lại ---
+        # --- BƯỚC 5: Đọc các thông tin còn lại ---
         self.rel2des, self.id2des = self._read_descriptions(self.config.relation_description)
         self.seen_descriptions = {}
         
-        # ### SỬA LỖI ###: Tạo save_data_path TRƯỚC khi gọi _read_data
+        # Tạo đường dẫn cache
         save_data_path = self._temp_datapath()
 
-        # Bây giờ truyền cả 2 tham số vào
+        # Đọc và xử lý dữ liệu từ file JSON đã được xác định ở bước 1
         self.training_dataset, self.valid_dataset, self.test_dataset = self._read_data(
-            self.config.json_data_file, 
+            self.config.json_data_file, # Thuộc tính này được tạo trong _configure_paths
             save_data_path
         )
         
-        mid_dir = os.path.join(self.config.data_path, "_processed_cache")
-        if not os.path.exists(mid_dir): os.makedirs(mid_dir, exist_ok=True)
-        file_name = f"{self.config.task_name}_{self.config.pattern}_{config.prompt_len if 'prompt' in config.pattern else ''}_{self.config.seed}.pkl"
-        self.save_data_path = os.path.join(mid_dir, file_name)
-
-        self.training_dataset, self.valid_dataset, self.test_dataset = self._read_data(self.config.data_file)
-        
+        # --- BƯỚC 6: Phần còn lại của logic khởi tạo (không đổi) ---
         self.batch = 0
         self.task_length = len(self.id2rel) // self.config.rel_per_task
         self.seen_relations = []
         self.history_test_data = {}
-
 
     def set_path(self, config):
         if config.task_name == 'FewRel':
@@ -110,7 +110,33 @@ class data_sampler_CFRL(object):
             config.relation_description = os.path.join(config.data_path, config.task_name, "relation_description.txt")
 
     # Dán đoạn code này vào bên trong class data_sampler_CFRL trong file sampler.py
+    # Trong file sampler.py, bên trong lớp data_sampler_CFRL
 
+    def _configure_paths(self):
+        """
+        Tự động tạo các đường dẫn file cần thiết dựa trên task_name
+        và gán chúng vào đối tượng config.
+        """
+        task_name = self.config.task_name
+        data_root = self.config.data_root # Đọc từ config.ini
+        
+        print(f"Đang cấu hình đường dẫn cho dataset: {task_name}")
+        
+        if task_name == 'FewRel':
+            data_suffix = ''
+        elif task_name == 'TACRED':
+            data_suffix = '_tacred'
+        else:
+            raise ValueError(f"Dataset '{task_name}' không được hỗ trợ.")
+            
+        # ### SỬA LỖI ###: Gán các đường dẫn đã tạo vào chính self.config
+        self.config.json_data_file = os.path.join(data_root, f"data_with_marker{data_suffix}.json")
+        self.config.relation_file = os.path.join(data_root, f"id2rel{data_suffix}.json")
+        self.config.relation_description = os.path.join(data_root, task_name, "relation_description.txt")
+        
+        print(f" - Data file được xác định: {self.config.json_data_file}")
+        print(f" - Relation file được xác định: {self.config.relation_file}")
+        print(f" - Description file được xác định: {self.config.relation_description}")
     def _temp_datapath(self):
         """
         Tạo đường dẫn file cache để lưu dữ liệu đã được xử lý.
