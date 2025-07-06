@@ -137,8 +137,8 @@ class Manager(object):
                 # ...
 
                 with torch.no_grad():
-                    if not list_seen_des: continue
-                    rep_seen_des_list = [encoder({'ids': torch.tensor([d['ids']]).to(self.config.device), 'mask': torch.tensor([d['mask']]).to(self.config.device)}, is_des=True) for d in list_seen_des]
+                    if not list_seen_des_tokens: continue
+                    rep_seen_des_list = [encoder({'ids': torch.tensor([d['ids']]).to(self.config.device), 'mask': torch.tensor([d['mask']]).to(self.config.device)}, is_des=True) for d in list_seen_des_tokens]
                     if not rep_seen_des_list: continue
                     rep_seen_des = torch.cat(rep_seen_des_list)
                     clusters, clusters_centroids = self.get_cluster_and_centroids(rep_seen_des)
