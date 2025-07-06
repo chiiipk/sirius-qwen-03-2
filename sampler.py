@@ -146,7 +146,7 @@ class data_sampler_CFRL(object):
         print(f"Đường dẫn file cache được tạo: {save_path}")
         return save_path
 
-    def _extract_entity_info(tokens, start_marker, end_marker):
+    def _extract_entity_info(self, tokens, start_marker, end_marker): 
         try:
             start_idx = tokens.index(start_marker)
             end_idx = tokens.index(end_marker)
