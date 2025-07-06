@@ -92,7 +92,10 @@ class Manager(object):
         return mem_set
 
     # --- HÀM TRAIN_MODEL ĐÃ ĐƯỢC HOÀN THIỆN ---
+# Trong file train.py, bên trong lớp Manager
+
     def train_model(self, encoder, training_data, seen_descriptions, seen_relations, list_seen_des_tokens):
+        # Các dòng khởi tạo data_loader, optimizer, etc. giữ nguyên
         data_loader = get_data_loader(self.config, training_data, shuffle=True)
         if not data_loader: return
         
@@ -105,24 +108,33 @@ class Manager(object):
                 optimizer.zero_grad()
                 for k in instance.keys(): instance[k] = instance[k].to(self.config.device)
                 
-                # ### SỬA LỖI ###: Tạo batch mô tả từ list_seen_des_tokens đã được token hóa sẵn
-                # Thay vì dùng seen_des, ta dùng list_seen_des_tokens mà sampler đã chuẩn bị
-                # Giả định list_seen_des_tokens là một list các dict {'ids':..., 'mask':...}
-                # và chúng ta cần lấy ra đúng mô tả cho các label trong batch.
-                # Đây là một bước phức tạp, để đơn giản hóa, ta sẽ tạo batch_des_instance
-                # bằng cách token hóa lại mô tả từ seen_descriptions
-                des_texts = [seen_descriptions[self.id2rel[label.item()]][0] for label in labels] # Lấy mô tả đầu tiên
-                batch_des_instance = self.tokenizer(
+                # --- PHẦN SỬA LỖI ---
+                # Lấy văn bản mô tả cho các nhãn trong batch
+                des_texts = [seen_descriptions.get(self.id2rel.get(label.item(), ''), [''])[0] for label in labels]
+
+                # Tokenize mô tả
+                tokenized_des = self.tokenizer(
                     des_texts,
                     padding='max_length',
                     truncation=True,
                     max_length=self.config.max_length,
                     return_tensors='pt'
-                ).to(self.config.device)
-    
+                )
+
+                # **Tạo dictionary chuẩn hóa**
+                batch_des_instance = {
+                    'ids': tokenized_des['input_ids'].to(self.config.device),
+                    'mask': tokenized_des['attention_mask'].to(self.config.device)
+                }
+                # --- KẾT THÚC PHẦN SỬA LỖI ---
+                
+                # Giờ đây các lệnh gọi encoder sẽ nhận đúng định dạng
                 hidden = encoder(instance)
                 rep_des = encoder(batch_des_instance, is_des=True)
                 rep_des_2 = encoder(batch_des_instance, is_des=True)
+
+                # ... (Phần còn lại của hàm train_model giữ nguyên không đổi)
+                # ...
 
                 with torch.no_grad():
                     if not list_seen_des: continue
