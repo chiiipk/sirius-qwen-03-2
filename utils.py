@@ -210,7 +210,7 @@ class Moment:
     
         return supervised_contrastive_loss
     def mutual_information_loss_cluster(self, x_bert, x_stella, labels,  temperature=0.1,  relation_2_cluster = None):
-        mask = labels.unsqueeze(1) == labels.unsqueeze(0)
+        mask = labels.unsqueeze(1) == labels.unsqueeze(0).float()
         mask = mask.to(self.config.device)
         x_bert = F.normalize(x_bert, p=2, dim=1)
         x_stella = F.normalize(x_stella, p=2, dim=1)
@@ -238,8 +238,8 @@ class Moment:
             hidden_teacher: torch.Tensor, # (b,n)
             hidden_student: torch.Tensor, # (b,n)
         ) -> torch.Tensor:
-        device = hidden_student.device
-        hidden_teacher = hidden_teacher.to(device) 
+        device = hidden_student.device.float()
+        hidden_teacher = hidden_teacher.to(device).float() 
         hidden_teacher = F.normalize(hidden_teacher, dim=1)  
         hidden_student = F.normalize(hidden_student, dim=1) 
         cos_sim = F.cosine_similarity(hidden_student, hidden_teacher, dim=1)
