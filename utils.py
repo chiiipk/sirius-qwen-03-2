@@ -41,32 +41,45 @@ class Moment:
         self.m = config.margin
 
 
-    def init_moment(self, encoder, dataset, is_memory=False):
+    def init_moment(self, encoder, tokenizer, dataset, seen_descriptions, id2rel, is_memory=False):
         encoder.eval()
         datalen = len(dataset)
-        if not dataset: # Tránh lỗi nếu dataset rỗng
-            return
+        if not dataset: return
             
         data_loader = get_data_loader(self.config, dataset, shuffle=False)
-        if data_loader is None:
-            return
-
+        if data_loader is None: return
+    
+        # Chỉ xử lý cho tác vụ hiện tại, không phải memory
         if not is_memory:
             self.features = torch.zeros(datalen, self.config.encoder_output_size)
             self.features_des = torch.zeros(datalen, self.config.encoder_output_size)
             lbs = []
+            original_indices = []
+    
             for step, (instance, labels, ind) in enumerate(data_loader):
                 with torch.no_grad():
                     for k in instance.keys():
                         instance[k] = instance[k].to(self.config.device)
+                    
+                    # Tính hidden state cho câu
                     hidden = encoder(instance)
-                    fea = hidden.detach().cpu().float() 
-                    self.update(ind, fea)
-                    lbs.append(labels)
-            # --- SỬA LỖI ---: Xóa dòng lặp lại
-            # lbs.append(labels) 
-            lbs = torch.cat(lbs)
-            self.labels = lbs
+                    self.features[ind] = hidden.detach().cpu().float()
+                    
+                    # ### SỬA LỖI ###: Tính hidden state cho mô tả tương ứng
+                    des_texts = [seen_descriptions[id2rel[label.item()]][0] for label in labels]
+                    batch_des_instance = tokenizer(
+                        des_texts, padding='max_length', truncation=True, 
+                        max_length=self.config.max_length, return_tensors='pt'
+                    ).to(self.config.device)
+                    
+                    hidden_des = encoder(batch_des_instance, is_des=True)
+                    self.features_des[ind] = hidden_des.detach().cpu().float()
+    
+                    lbs.append(labels.cpu())
+                    original_indices.append(ind.cpu())
+            
+            # Nối các tensor lại
+            self.labels = torch.cat(lbs)
         else:
             self.mem_samples = dataset
             self.mem_features = torch.zeros(datalen, self.config.encoder_output_size)
