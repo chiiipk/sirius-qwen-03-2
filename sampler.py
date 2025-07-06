@@ -222,7 +222,7 @@ class data_sampler_CFRL(object):
 
     def _tokenize_cls(self, sample):
         return self._tokenize_template(' '.join(sample['tokens']))
-
+#{'relation': 10, 'ids': [101, ...], 'mask': [1, ...]}
     # --- CÁC HÀM ĐỌC DỮ LIỆU ---
     def _read_relations(self, file):
         id2rel = json.load(open(file, 'r', encoding='utf-8'))
