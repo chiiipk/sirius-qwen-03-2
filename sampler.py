@@ -34,19 +34,21 @@ def get_tokenizer(config):
     return tokenizer
 
 class data_sampler_CFRL(object):
+
     def __init__(self, config, seed=None):
         self.config = config
         self.set_path(self.config)
         self.tokenizer = get_tokenizer(self.config)
 
-        # --- SỬA LỖI: Đưa khối này lên trước ---
-        self.seed = seed
-        self.set_seed(self.seed)
-        
-        # --- Các khối còn lại giữ nguyên thứ tự ---
+        # --- Bước 1: Đọc thông tin quan hệ TRƯỚC TIÊN ---
         self.id2rel, self.rel2id = self._read_relations(self.config.relation_file)
         self.config.num_of_relation = len(self.id2rel)
         
+        # --- Bước 2: Bây giờ mới thiết lập seed, vì set_seed cần id2rel ---
+        self.seed = seed
+        self.set_seed(self.seed)
+        
+        # --- Các bước còn lại ---
         self.rel2des, self.id2des = self._read_descriptions(self.config.relation_description)
         self.seen_descriptions = {}
         
@@ -55,7 +57,6 @@ class data_sampler_CFRL(object):
         file_name = f"{self.config.task_name}_{self.config.pattern}_{config.prompt_len if 'prompt' in config.pattern else ''}_{self.config.seed}.pkl"
         self.save_data_path = os.path.join(mid_dir, file_name)
 
-        # Bây giờ, lệnh gọi này là an toàn
         self.training_dataset, self.valid_dataset, self.test_dataset = self._read_data(self.config.data_file)
         
         self.batch = 0
@@ -63,7 +64,7 @@ class data_sampler_CFRL(object):
         self.seen_relations = []
         self.history_test_data = {}
 
-# ... (các hàm khác giữ nguyên) ...
+
     def set_path(self, config):
         if config.task_name == 'FewRel':
             config.data_file = os.path.join(config.data_path, "data_with_marker.json")
