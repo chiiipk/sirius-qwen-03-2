@@ -33,6 +33,29 @@ def get_tokenizer(config):
 
     return tokenizer
 
+def _extract_entity_info(tokens, start_marker, end_marker):
+    """Trích xuất text và vị trí của một thực thể từ danh sách token."""
+    try:
+        start_idx = tokens.index(start_marker)
+        end_idx = tokens.index(end_marker)
+        
+        # Text của thực thể
+        entity_text = " ".join(tokens[start_idx + 1:end_idx])
+        
+        # Vị trí của thực thể trong câu *sau khi đã loại bỏ các marker*
+        # Đây là bước quan trọng để các pattern khác hoạt động đúng
+        offset = 0
+        if start_marker in ['[E11]', '[E21]']: offset += 1
+        if start_marker == '[E21]': offset += 2 # Vì có [E11] và [E12] đứng trước
+            
+        clean_start = start_idx - offset
+        clean_end = end_idx - offset - 1
+        
+        return entity_text, [[clean_start, clean_end]]
+
+    except ValueError:
+        return None, None
+
 class data_sampler_CFRL(object):
 
     def __init__(self, config, seed=None):
@@ -100,52 +123,68 @@ class data_sampler_CFRL(object):
             if index in self.id2des: self.seen_descriptions[relation_name] = self.id2des[index]
         return cur_training_data, cur_valid_data, cur_test_data, current_relations, self.history_test_data, self.seen_relations, self.seen_descriptions
 
-    def _read_data(self, file):
-        if os.path.isfile(self.save_data_path):
-            print(f"Tải dữ liệu cache từ: {self.save_data_path}")
-            with open(self.save_data_path, 'rb') as f: return pickle.load(f)
-        
-        print(f"Xử lý dữ liệu từ file JSON: {file}")
-        data = json.load(open(file, 'r', encoding='utf-8'))
-        train_d, val_d, test_d = [[] for _ in range(self.config.num_of_relation)], [[] for _ in range(self.config.num_of_relation)], [[] for _ in range(self.config.num_of_relation)]
-        
-        for relation in data.keys():
-            rel_samples = data[relation]
-            if self.seed is not None: random.seed(self.seed)
-            random.shuffle(rel_samples)
-            num_train, num_val = int(0.7 * len(rel_samples)), int(0.1 * len(rel_samples))
-            
-            for i, sample in enumerate(rel_samples):
-                # --- PHẦN LAI TẠO QUAN TRỌNG ---
-                # Logic này tìm vị trí của head/tail để cung cấp cho hàm tokenize
-                context_tokens = [token.lower() for token in sample['tokens']]
-                head_entity_tokens = [token.lower() for token in word_tokenize(sample['h'][0])]
-                tail_entity_tokens = [token.lower() for token in word_tokenize(sample['t'][0])]
-                
-                try: h_start = context_tokens.index(head_entity_tokens[0])
-                except ValueError: continue
-                h_end = h_start + len(head_entity_tokens) - 1
+def _read_data(self, file):
+    if os.path.isfile(self.save_data_path):
+        print(f"Tải dữ liệu cache từ: {self.save_data_path}")
+        with open(self.save_data_path, 'rb') as f: return pickle.load(f)
+    
+    print(f"Xử lý dữ liệu từ file JSON: {file}")
+    data = json.load(open(file, 'r', encoding='utf-8'))
+    train_d, val_d, test_d = [[] for _ in range(self.config.num_of_relation)], [[] for _ in range(self.config.num_of_relation)], [[] for _ in range(self.config.num_of_relation)]
+    
+    legacy_markers = ['[E11]', '[E12]', '[E21]', '[E22]']
 
-                try: t_start = context_tokens.index(tail_entity_tokens[0])
-                except ValueError: continue
-                t_end = t_start + len(tail_entity_tokens) - 1
-                
-                processed_sample = {
-                    'relation': self.rel2id[sample['relation']],
-                    'tokens': context_tokens,
-                    'h': [sample['h'][0], 'ID_h', [[h_start, h_end]]],
-                    't': [sample['t'][0], 'ID_t', [[t_start, t_end]]]
-                }
-                # --- KẾT THÚC PHẦN LAI TẠO ---
-                
-                tokenized_sample = self.tokenize(processed_sample) # Giờ hàm tokenize sẽ có đủ thông tin
-                
-                if i < num_train: train_d[self.rel2id[relation]].append(tokenized_sample)
-                elif i < num_train + num_val: val_d[self.rel2id[relation]].append(tokenized_sample)
-                else: test_d[self.rel2id[relation]].append(tokenized_sample)
-                
-        with open(self.save_data_path, 'wb') as f: pickle.dump((train_d, val_d, test_d), f)
-        return train_d, val_d, test_d
+    for relation in data.keys():
+        rel_samples = data[relation]
+        if self.seed is not None: random.seed(self.seed)
+        random.shuffle(rel_samples)
+        
+        # Sửa lại logic chia tách cho nhất quán với Few-shot setting
+        num_train = self.config.num_k 
+        num_val = self.config.num_k # Thường tập val/test trong few-shot cũng nhỏ
+        
+        train_count, val_count, test_count = 0, 0, 0
+
+        for sample in rel_samples:
+            # ### SỬA LỖI: BẮT ĐẦU PHẦN LOGIC MỚI ###
+            
+            # 1. Trích xuất thông tin thực thể từ các marker trong `sample['tokens']`
+            raw_tokens = sample['tokens']
+            
+            head_text, head_pos = _extract_entity_info(raw_tokens, '[E11]', '[E12]')
+            tail_text, tail_pos = _extract_entity_info(raw_tokens, '[E21]', '[E22]')
+
+            # Nếu không tìm thấy đủ marker trong câu, bỏ qua mẫu này
+            if head_text is None or tail_text is None:
+                continue
+
+            # 2. Tạo một dictionary 'processed_sample' mới có cấu trúc chuẩn
+            processed_sample = {
+                'relation': self.rel2id[sample['relation']],
+                # Tạo một list token sạch không chứa marker
+                'tokens': [token for token in raw_tokens if token not in legacy_markers],
+                'h': [head_text, 'ID_h', head_pos], # Cấu trúc [text, id, [[start, end]]]
+                't': [tail_text, 'ID_t', tail_pos], # Cấu trúc [text, id, [[start, end]]]
+            }
+            # ### KẾT THÚC PHẦN LOGIC MỚI ###
+            
+            # 3. Giờ hàm tokenize sẽ nhận được đúng định dạng nó cần
+            tokenized_sample = self.tokenize(processed_sample)
+            
+            # 4. Phân chia dữ liệu
+            # Sử dụng num_k cho tập train, phần còn lại cho val/test
+            if train_count < num_train:
+                train_d[self.rel2id[relation]].append(tokenized_sample)
+                train_count += 1
+            # elif val_count < num_val:
+            #     val_d[self.rel2id[relation]].append(tokenized_sample)
+            #     val_count += 1
+            else:
+                test_d[self.rel2id[relation]].append(tokenized_sample)
+                test_count += 1
+            
+    with open(self.save_data_path, 'wb') as f: pickle.dump((train_d, val_d, test_d), f)
+    return train_d, val_d, test_d
 
     # --- CÁC HÀM TOKENIZE ĐA DẠNG ---
     def tokenize(self, sample):
