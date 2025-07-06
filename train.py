@@ -92,7 +92,7 @@ class Manager(object):
         return mem_set
 
     # --- HÀM TRAIN_MODEL ĐÃ ĐƯỢC HOÀN THIỆN ---
-    def train_model(self, encoder, training_data, seen_des, seen_relations, list_seen_des):
+    def train_model(self, encoder, training_data, seen_descriptions, seen_relations, list_seen_des_tokens):
         data_loader = get_data_loader(self.config, training_data, shuffle=True)
         if not data_loader: return
         
@@ -105,9 +105,21 @@ class Manager(object):
                 optimizer.zero_grad()
                 for k in instance.keys(): instance[k] = instance[k].to(self.config.device)
                 
-                batch_des_instance = {'ids': torch.stack([torch.tensor(seen_des[self.id2rel[label.item()]]['ids']) for label in labels]).to(self.config.device), 
-                                      'mask': torch.stack([torch.tensor(seen_des[self.id2rel[label.item()]]['mask']) for label in labels]).to(self.config.device)}
-                
+                # ### SỬA LỖI ###: Tạo batch mô tả từ list_seen_des_tokens đã được token hóa sẵn
+                # Thay vì dùng seen_des, ta dùng list_seen_des_tokens mà sampler đã chuẩn bị
+                # Giả định list_seen_des_tokens là một list các dict {'ids':..., 'mask':...}
+                # và chúng ta cần lấy ra đúng mô tả cho các label trong batch.
+                # Đây là một bước phức tạp, để đơn giản hóa, ta sẽ tạo batch_des_instance
+                # bằng cách token hóa lại mô tả từ seen_descriptions
+                des_texts = [seen_descriptions[self.id2rel[label.item()]][0] for label in labels] # Lấy mô tả đầu tiên
+                batch_des_instance = self.tokenizer(
+                    des_texts,
+                    padding='max_length',
+                    truncation=True,
+                    max_length=self.config.max_length,
+                    return_tensors='pt'
+                ).to(self.config.device)
+    
                 hidden = encoder(instance)
                 rep_des = encoder(batch_des_instance, is_des=True)
                 rep_des_2 = encoder(batch_des_instance, is_des=True)
@@ -177,32 +189,46 @@ class Manager(object):
 
     # --- HÀM TRAIN CHÍNH ĐÃ ĐƯỢC HOÀN THIỆN ---
     def train(self):
+        # Khởi tạo sampler
         sampler = data_sampler_CFRL(config=self.config, seed=self.config.seed)
+        
+        # ### SỬA LỖI ###: Lấy tokenizer từ sampler và truyền cho encoder
+        self.tokenizer = sampler.tokenizer 
         self.id2rel, self.rel2id = sampler.id2rel, sampler.rel2id
-        self.tokenizer = sampler.tokenizer
+        
+        # Truyền config vào encoder, encoder sẽ tự xử lý tokenizer và model
         encoder = EncodingModel(self.config)
         encoder.to(self.config.device)
         
         total_acc, total_acc1, total_acc2 = [], [], []
-        memory_for_prototypes, seen_des = {}, {}
-
-        for step, (training_data, _, test_data, current_relations, historic_test_data, seen_relations, seen_descriptions_raw) in enumerate(sampler):
+        memory_for_prototypes = {}
+        
+        # `seen_descriptions` sẽ được lấy trực tiếp từ sampler
+        for step, (training_data, _, test_data, current_relations, historic_test_data, seen_relations, seen_descriptions) in enumerate(sampler):
             print(f"\n{'='*20} BẮT ĐẦU TÁC VỤ {step + 1}/{sampler.task_length} {'='*20}")
             
-            for rel_name, description_list in seen_descriptions_raw.items():
-                if rel_name not in seen_des:
-                    tokenized_output = self.tokenizer(description_list[0], padding='max_length', truncation=True, max_length=self.config.max_length, return_tensors='pt')
-                    seen_des[rel_name] = {'ids': tokenized_output['input_ids'].squeeze().tolist(), 'mask': tokenized_output['attention_mask'].squeeze().tolist()}
-            
-            list_seen_des = [seen_des[rel] for rel in seen_relations]
-            current_task_data = [item for rel in current_relations for item in training_data[rel]]
+            # Tạo list các mô tả đã được token hóa sẵn sàng cho việc gom cụm
+            # Lấy mô tả đầu tiên của mỗi quan hệ đã thấy
+            list_seen_des = [seen_descriptions[rel][0] for rel in seen_relations if rel in seen_descriptions and seen_descriptions[rel]]
+            tokenized_list_seen_des = self.tokenizer(
+                list_seen_des,
+                padding='max_length',
+                truncation=True,
+                max_length=self.config.max_length,
+                return_tensors='pt'
+            )
+    
+            current_task_data = [item for rel in current_relations for item in training_data.get(rel, [])]
             combined_training_data = current_task_data + self.buffer.get_data()
             print(f"Huấn luyện trên {len(combined_training_data)} mẫu ({len(current_task_data)} mới, {len(self.buffer.get_data())} từ buffer).")
             
             if combined_training_data:
                 self.moment = Moment(self.config)
-                self.moment.init_moment(encoder, combined_training_data)
-                self.train_model(encoder, combined_training_data, seen_des, seen_relations, list_seen_des)
+                # ### SỬA LỖI ###: Truyền thêm tokenizer và seen_descriptions vào init_moment
+                self.moment.init_moment(encoder, self.tokenizer, combined_training_data, seen_descriptions, self.id2rel)
+                
+                # `train_model` giờ nhận `seen_descriptions` và `tokenized_list_seen_des`
+                self.train_model(encoder, combined_training_data, seen_descriptions, seen_relations, tokenized_list_seen_des)
 
             for rel in current_relations:
                 rel_id = self.rel2id[rel]
