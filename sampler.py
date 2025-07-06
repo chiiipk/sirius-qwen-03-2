@@ -237,7 +237,7 @@ class data_sampler_CFRL(object):
             print(f"Quan hệ '{relation_name}': {len(train_samples)} train, {len(val_samples)} val, {len(test_samples)} test.")
     
             # Hàm helper để tránh lặp code
-            def process_and_append(target_dataset, source_samples):
+    def process_and_append(target_dataset, source_samples):
                 for sample in source_samples:
                     # Logic trích xuất thông tin thực thể (giữ nguyên từ trước)
                     raw_tokens = sample['tokens']
