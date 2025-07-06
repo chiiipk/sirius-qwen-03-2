@@ -56,6 +56,8 @@ def _extract_entity_info(tokens, start_marker, end_marker):
     except ValueError:
         return None, None
 
+
+
 class data_sampler_CFRL(object):
 
     def __init__(self, config, seed=None):
@@ -125,33 +127,6 @@ class data_sampler_CFRL(object):
 
 # Trong class data_sampler_CFRL của file sampler.py
     # Dán đoạn code này vào bên trong class data_sampler_CFRL trong file sampler.py
-
-    def _read_relations(self, file_path):
-        """
-        Đọc file JSON chứa danh sách các quan hệ.
-        File này có định dạng là một list các tên quan hệ.
-        Ví dụ: ["org:founded_by", "per:schools_attended", ...]
-        """
-        print(f"Đang đọc file quan hệ từ: {file_path}")
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                id2rel_list = json.load(f)
-            
-            # Tạo dictionary id -> relation name
-            id2rel_dict = {i: name for i, name in enumerate(id2rel_list)}
-            
-            # Tạo dictionary relation name -> id
-            rel2id_dict = {name: i for i, name in enumerate(id2rel_list)}
-            
-            return id2rel_dict, rel2id_dict
-            
-        except FileNotFoundError:
-            print(f"LỖI NGHIÊM TRỌNG: Không tìm thấy file quan hệ tại '{file_path}'. Vui lòng kiểm tra lại đường dẫn trong config.ini.")
-            # Thoát chương trình vì đây là file bắt buộc
-            exit()
-        except json.JSONDecodeError:
-            print(f"LỖI NGHIÊM TRỌNG: File '{file_path}' không phải là file JSON hợp lệ.")
-            exit()
 
     def _read_data(self, json_file_path, save_data_path):
         # ### THAY ĐỔI LỚN: Tên file cache giờ sẽ phản ánh chiến lược chia tách mới ###
@@ -226,21 +201,6 @@ class data_sampler_CFRL(object):
         return train_dataset, val_dataset, test_dataset
 
 # Bạn cũng cần đảm bảo có hàm _extract_entity_info trong class hoặc bên ngoài
-def _extract_entity_info(self, tokens, start_marker, end_marker):
-    try:
-        start_idx = tokens.index(start_marker)
-        end_idx = tokens.index(end_marker)
-        entity_text = " ".join(tokens[start_idx + 1:end_idx])
-        
-        # Logic tính offset để có vị trí đúng trong câu sạch
-        offset = sum(1 for tok in tokens[:start_idx] if tok in ['[E11]', '[E12]', '[E21]', '[E22]'])
-        
-        clean_start = start_idx - offset
-        clean_end = end_idx - offset - 1
-        
-        return entity_text, [[clean_start, clean_end]]
-    except ValueError:
-        return None, None
 
     # --- CÁC HÀM TOKENIZE ĐA DẠNG ---
     def tokenize(self, sample):
@@ -280,9 +240,32 @@ def _extract_entity_info(self, tokens, start_marker, end_marker):
         return self._tokenize_template(' '.join(sample['tokens']))
 #{'relation': 10, 'ids': [101, ...], 'mask': [1, ...]}
     # --- CÁC HÀM ĐỌC DỮ LIỆU ---
-    def _read_relations(self, file):
-        id2rel = json.load(open(file, 'r', encoding='utf-8'))
-        return id2rel, {name: i for i, name in enumerate(id2rel)}
+    def _read_relations(self, file_path):
+        """
+        Đọc file JSON chứa danh sách các quan hệ.
+        File này có định dạng là một list các tên quan hệ.
+        Ví dụ: ["org:founded_by", "per:schools_attended", ...]
+        """
+        print(f"Đang đọc file quan hệ từ: {file_path}")
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                id2rel_list = json.load(f)
+            
+            # Tạo dictionary id -> relation name
+            id2rel_dict = {i: name for i, name in enumerate(id2rel_list)}
+            
+            # Tạo dictionary relation name -> id
+            rel2id_dict = {name: i for i, name in enumerate(id2rel_list)}
+            
+            return id2rel_dict, rel2id_dict
+            
+        except FileNotFoundError:
+            print(f"LỖI NGHIÊM TRỌNG: Không tìm thấy file quan hệ tại '{file_path}'. Vui lòng kiểm tra lại đường dẫn trong config.ini.")
+            # Thoát chương trình vì đây là file bắt buộc
+            exit()
+        except json.JSONDecodeError:
+            print(f"LỖI NGHIÊM TRỌNG: File '{file_path}' không phải là file JSON hợp lệ.")
+            exit()
 
     def _read_descriptions(self, file):
         rel2des, id2des = {}, {}
