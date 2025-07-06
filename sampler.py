@@ -124,6 +124,34 @@ class data_sampler_CFRL(object):
         return cur_training_data, cur_valid_data, cur_test_data, current_relations, self.history_test_data, self.seen_relations, self.seen_descriptions
 
 # Trong class data_sampler_CFRL của file sampler.py
+    # Dán đoạn code này vào bên trong class data_sampler_CFRL trong file sampler.py
+
+    def _read_relations(self, file_path):
+        """
+        Đọc file JSON chứa danh sách các quan hệ.
+        File này có định dạng là một list các tên quan hệ.
+        Ví dụ: ["org:founded_by", "per:schools_attended", ...]
+        """
+        print(f"Đang đọc file quan hệ từ: {file_path}")
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                id2rel_list = json.load(f)
+            
+            # Tạo dictionary id -> relation name
+            id2rel_dict = {i: name for i, name in enumerate(id2rel_list)}
+            
+            # Tạo dictionary relation name -> id
+            rel2id_dict = {name: i for i, name in enumerate(id2rel_list)}
+            
+            return id2rel_dict, rel2id_dict
+            
+        except FileNotFoundError:
+            print(f"LỖI NGHIÊM TRỌNG: Không tìm thấy file quan hệ tại '{file_path}'. Vui lòng kiểm tra lại đường dẫn trong config.ini.")
+            # Thoát chương trình vì đây là file bắt buộc
+            exit()
+        except json.JSONDecodeError:
+            print(f"LỖI NGHIÊM TRỌNG: File '{file_path}' không phải là file JSON hợp lệ.")
+            exit()
 
     def _read_data(self, json_file_path, save_data_path):
         # ### THAY ĐỔI LỚN: Tên file cache giờ sẽ phản ánh chiến lược chia tách mới ###
