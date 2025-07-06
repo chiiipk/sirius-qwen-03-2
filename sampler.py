@@ -123,68 +123,96 @@ class data_sampler_CFRL(object):
             if index in self.id2des: self.seen_descriptions[relation_name] = self.id2des[index]
         return cur_training_data, cur_valid_data, cur_test_data, current_relations, self.history_test_data, self.seen_relations, self.seen_descriptions
 
-    def _read_data(self, file):
-        if os.path.isfile(self.save_data_path):
-            print(f"Tải dữ liệu cache từ: {self.save_data_path}")
-            with open(self.save_data_path, 'rb') as f: return pickle.load(f)
+# Trong class data_sampler_CFRL của file sampler.py
+
+    def _read_data(self, json_file_path, save_data_path):
+        # ### THAY ĐỔI LỚN: Tên file cache giờ sẽ phản ánh chiến lược chia tách mới ###
+        # Thêm hậu tố "_full" để phân biệt với cache của few-shot
+        save_data_path = save_data_path.replace(".pkl", "_full_data.pkl")
+    
+        if os.path.isfile(save_data_path):
+            with open(save_data_path, 'rb') as f:
+                datas = pickle.load(f)
+                print(f"Đã tải dữ liệu (full) đã xử lý từ cache: {save_data_path}")
+            return datas['train'], datas['valid'], datas['test']
         
-        print(f"Xử lý dữ liệu từ file JSON: {file}")
-        data = json.load(open(file, 'r', encoding='utf-8'))
-        train_d, val_d, test_d = [[] for _ in range(self.config.num_of_relation)], [[] for _ in range(self.config.num_of_relation)], [[] for _ in range(self.config.num_of_relation)]
+        print(f"Cache không tồn tại. Đang xử lý dữ liệu (full) từ file JSON: {json_file_path}")
+        with open(json_file_path, 'r', encoding='utf-8') as f:
+            raw_data = json.load(f)
+            
+        train_dataset = [[] for _ in range(self.config.num_of_relation)]
+        val_dataset = [[] for _ in range(self.config.num_of_relation)]
+        test_dataset = [[] for _ in range(self.config.num_of_relation)]
         
         legacy_markers = ['[E11]', '[E12]', '[E21]', '[E22]']
-    
-        for relation in data.keys():
-            rel_samples = data[relation]
-            if self.seed is not None: random.seed(self.seed)
-            random.shuffle(rel_samples)
+        
+        for relation_name, samples in raw_data.items():
+            if self.seed is not None:
+                random.seed(self.seed)
+            random.shuffle(samples)
             
-            # Sửa lại logic chia tách cho nhất quán với Few-shot setting
-            num_train = self.config.num_k 
-            num_val = self.config.num_k # Thường tập val/test trong few-shot cũng nhỏ
+            relation_id = self.rel2id.get(relation_name)
+            if relation_id is None: continue
+    
+            # ### THAY ĐỔI CỐT LÕI: Chia dữ liệu theo tỷ lệ, không còn dùng num_k ###
+            n_samples = len(samples)
+            n_train = int(n_samples * 0.7)  # 70% cho training
+            n_val = int(n_samples * 0.1)    # 10% cho validation
             
-            train_count, val_count, test_count = 0, 0, 0
+            train_samples = samples[:n_train]
+            val_samples = samples[n_train : n_train + n_val]
+            test_samples = samples[n_train + n_val:]
+            
+            print(f"Quan hệ '{relation_name}': {len(train_samples)} train, {len(val_samples)} val, {len(test_samples)} test.")
     
-            for sample in rel_samples:
-                # ### SỬA LỖI: BẮT ĐẦU PHẦN LOGIC MỚI ###
-                
-                # 1. Trích xuất thông tin thực thể từ các marker trong `sample['tokens']`
-                raw_tokens = sample['tokens']
-                
-                head_text, head_pos = _extract_entity_info(raw_tokens, '[E11]', '[E12]')
-                tail_text, tail_pos = _extract_entity_info(raw_tokens, '[E21]', '[E22]')
+            # Hàm helper để tránh lặp code
+            def process_and_append(target_dataset, source_samples):
+                for sample in source_samples:
+                    # Logic trích xuất thông tin thực thể (giữ nguyên từ trước)
+                    raw_tokens = sample['tokens']
+                    head_text, head_pos = self._extract_entity_info(raw_tokens, '[E11]', '[E12]')
+                    tail_text, tail_pos = self._extract_entity_info(raw_tokens, '[E21]', '[E22]')
     
-                # Nếu không tìm thấy đủ marker trong câu, bỏ qua mẫu này
-                if head_text is None or tail_text is None:
-                    continue
+                    if head_text is None or tail_text is None: continue
     
-                # 2. Tạo một dictionary 'processed_sample' mới có cấu trúc chuẩn
-                processed_sample = {
-                    'relation': self.rel2id[sample['relation']],
-                    # Tạo một list token sạch không chứa marker
-                    'tokens': [token for token in raw_tokens if token not in legacy_markers],
-                    'h': [head_text, 'ID_h', head_pos], # Cấu trúc [text, id, [[start, end]]]
-                    't': [tail_text, 'ID_t', tail_pos], # Cấu trúc [text, id, [[start, end]]]
-                }
-                # ### KẾT THÚC PHẦN LOGIC MỚI ###
-                
-                # 3. Giờ hàm tokenize sẽ nhận được đúng định dạng nó cần
-                tokenized_sample = self.tokenize(processed_sample)
-                
-                # 4. Phân chia dữ liệu
-                # Sử dụng num_k cho tập train, phần còn lại cho val/test
-                if train_count < num_train:
-                    train_d[self.rel2id[relation]].append(tokenized_sample)
-                    train_count += 1
-                # elif val_count < num_val:
-                #     val_d[self.rel2id[relation]].append(tokenized_sample)
-                #     val_count += 1
-                else:
-                    test_d[self.rel2id[relation]].append(tokenized_sample)
-                    test_count += 1
-                
-        with open(self.save_data_path, 'wb') as f: pickle.dump((train_d, val_d, test_d), f)
-        return train_d, val_d, test_d
+                    processed_sample = {
+                        'relation': relation_id,
+                        'tokens': [token for token in raw_tokens if token not in legacy_markers],
+                        'h': [head_text, 'ID_h', head_pos],
+                        't': [tail_text, 'ID_t', tail_pos],
+                    }
+                    tokenized = self.tokenize(processed_sample)
+                    target_dataset[relation_id].append(tokenized)
+    
+            # Xử lý và thêm vào các tập dữ liệu tương ứng
+            process_and_append(train_dataset, train_samples)
+            process_and_append(val_dataset, val_samples)
+            process_and_append(test_dataset, test_samples)
+    
+        # Lưu vào cache
+        datas_to_save = {'train': train_dataset, 'valid': val_dataset, 'test': test_dataset}
+        with open(save_data_path, 'wb') as f:
+            pickle.dump(datas_to_save, f)
+            print(f"Đã lưu dữ liệu (full) đã xử lý vào cache: {save_data_path}")
+    
+        return train_dataset, val_dataset, test_dataset
+
+# Bạn cũng cần đảm bảo có hàm _extract_entity_info trong class hoặc bên ngoài
+def _extract_entity_info(self, tokens, start_marker, end_marker):
+    try:
+        start_idx = tokens.index(start_marker)
+        end_idx = tokens.index(end_marker)
+        entity_text = " ".join(tokens[start_idx + 1:end_idx])
+        
+        # Logic tính offset để có vị trí đúng trong câu sạch
+        offset = sum(1 for tok in tokens[:start_idx] if tok in ['[E11]', '[E12]', '[E21]', '[E22]'])
+        
+        clean_start = start_idx - offset
+        clean_end = end_idx - offset - 1
+        
+        return entity_text, [[clean_start, clean_end]]
+    except ValueError:
+        return None, None
 
     # --- CÁC HÀM TOKENIZE ĐA DẠNG ---
     def tokenize(self, sample):
