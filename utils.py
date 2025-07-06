@@ -58,22 +58,34 @@ class Moment:
     
             for step, (instance, labels, ind) in enumerate(data_loader):
                 with torch.no_grad():
+                    # Chuyển instance (câu) lên GPU
                     for k in instance.keys():
                         instance[k] = instance[k].to(self.config.device)
                     
-                    # Tính hidden state cho câu
+                    # Tính hidden state cho câu (định dạng đã đúng)
                     hidden = encoder(instance)
                     self.features[ind] = hidden.detach().cpu().float()
                     
-                    # ### SỬA LỖI ###: Tính hidden state cho mô tả tương ứng
-                    des_texts = [seen_descriptions[id2rel[label.item()]][0] for label in labels]
-                    batch_des_instance = tokenizer(
+                    # --- PHẦN SỬA LỖI ---
+                    # Lấy văn bản mô tả
+                    des_texts = [seen_descriptions.get(id2rel.get(label.item(), ''), [''])[0] for label in labels]
+    
+                    # Tokenize mô tả
+                    tokenized_des = tokenizer(
                         des_texts, padding='max_length', truncation=True, 
                         max_length=self.config.max_length, return_tensors='pt'
-                    ).to(self.config.device)
+                    )
                     
+                    # **Tạo dictionary chuẩn hóa** thay vì dùng trực tiếp kết quả của tokenizer
+                    batch_des_instance = {
+                        'ids': tokenized_des['input_ids'].to(self.config.device),
+                        'mask': tokenized_des['attention_mask'].to(self.config.device)
+                    }
+                    
+                    # Giờ đây encoder sẽ nhận đúng định dạng nó cần
                     hidden_des = encoder(batch_des_instance, is_des=True)
                     self.features_des[ind] = hidden_des.detach().cpu().float()
+                    # --- KẾT THÚC PHẦN SỬA LỖI ---
     
                     lbs.append(labels.cpu())
                     original_indices.append(ind.cpu())
