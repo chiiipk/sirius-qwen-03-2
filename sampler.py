@@ -267,22 +267,63 @@ class data_sampler_CFRL(object):
             print(f"LỖI NGHIÊM TRỌNG: File '{file_path}' không phải là file JSON hợp lệ.")
             exit()
 
-    def _read_descriptions(self, file):
+# Trong file sampler.py, bên trong lớp data_sampler_CFRL
+
+    def _read_descriptions(self, file_path):
+        """
+        Đọc file mô tả quan hệ. Hàm này có khả năng xử lý hai định dạng khác nhau
+        cho FewRel và TACRED một cách tự động.
+        """
+        print(f"Đang đọc file mô tả từ: {file_path}")
         rel2des, id2des = {}, {}
+        task_name = self.config.task_name
+
         try:
-            with open(file, 'r', encoding='utf-8') as f:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f:
                     line = line.strip()
-                    if not line: continue
-                    parts = line.split(None, 1)
-                    if len(parts) >= 2 and parts[0] in self.rel2id:
-                        id2des[self.rel2id[parts[0]]] = [parts[1]]
-                        rel2des[parts[0]] = parts[1]
+                    if not line:
+                        continue
+                    
+                    parts = line.split('\t')
+                    rel_name = ""
+                    description = ""
+
+                    # --- LOGIC PHÂN NHÁNH DỰA TRÊN TASK_NAME ---
+                    if task_name == 'FewRel':
+                        # Định dạng: "ID <tab> Tên đầy đủ <tab> Mô tả" hoặc "ID <tab> Mô tả"
+                        if len(parts) >= 2:
+                            rel_name = parts[0]       # Ví dụ: P931
+                            description = parts[-1]   # Luôn lấy phần cuối cùng làm mô tả
+                    
+                    elif task_name == 'TACRED':
+                        # Định dạng: "ID <tab> Tên đầy đủ <tab> Mô tả"
+                        if len(parts) >= 3:
+                            rel_name = parts[0]       # Ví dụ: org:founded_by
+                            description = parts[2]    # Mô tả luôn ở vị trí thứ 3
+                    
+                    else:
+                        # Mặc định, nếu có task mới, thử phân tích theo kiểu FewRel
+                        if len(parts) >= 2:
+                            rel_name = parts[0]
+                            description = parts[-1]
+                    # --- KẾT THÚC LOGIC PHÂN NHÁNH ---
+
+                    # Nếu đã phân tích thành công và quan hệ đó hợp lệ
+                    if rel_name and description and rel_name in self.rel2id:
+                        rel_id = self.rel2id[rel_name]
+                        rel2des[rel_name] = [description]
+                        id2des[rel_id] = [description]
+
         except FileNotFoundError:
-            print(f"CẢNH BÁO: Không tìm thấy file description tại {file}")
-        for rel_id, rel_name in enumerate(self.id2rel):
+            print(f"CẢNH BÁO: Không tìm thấy file description tại '{file_path}'.")
+
+        # Logic fallback: Nếu sau khi đọc mà một quan hệ nào đó vẫn không có mô tả,
+        # thì dùng chính tên của nó làm mô tả.
+        for rel_id, rel_name in self.id2rel.items():
             if rel_id not in id2des:
-                print(f"CẢNH BÁO: Quan hệ '{rel_name}' không có mô tả, dùng tên làm mặc định.")
+                print(f"CẢNH BÁO: Quan hệ '{rel_name}' (ID: {rel_id}) không có mô tả, dùng tên làm mặc định.")
                 id2des[rel_id] = [rel_name]
-                rel2des[rel_name] = rel_name
+                rel2des[rel_name] = [rel_name]
+                
         return rel2des, id2des
