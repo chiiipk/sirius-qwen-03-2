@@ -217,6 +217,24 @@ class data_sampler_CFRL(object):
         
         legacy_markers = ['[E11]', '[E12]', '[E21]', '[E22]']
         
+        def process_and_append(target_dataset, source_samples):
+                    for sample in source_samples:
+                        # Logic trích xuất thông tin thực thể (giữ nguyên từ trước)
+                        raw_tokens = sample['tokens']
+                        head_text, head_pos = self._extract_entity_info(raw_tokens, '[E11]', '[E12]')
+                        tail_text, tail_pos = self._extract_entity_info(raw_tokens, '[E21]', '[E22]')
+        
+                        if head_text is None or tail_text is None: continue
+        
+                        processed_sample = {
+                            'relation': relation_id,
+                            'tokens': [token for token in raw_tokens if token not in legacy_markers],
+                            'h': [head_text, 'ID_h', head_pos],
+                            't': [tail_text, 'ID_t', tail_pos],
+                        }
+                        tokenized = self.tokenize(processed_sample)
+                        target_dataset[relation_id].append(tokenized)
+                        
         for relation_name, samples in raw_data.items():
             if self.seed is not None:
                 random.seed(self.seed)
@@ -237,28 +255,12 @@ class data_sampler_CFRL(object):
             print(f"Quan hệ '{relation_name}': {len(train_samples)} train, {len(val_samples)} val, {len(test_samples)} test.")
     
             # Hàm helper để tránh lặp code
-    def process_and_append(target_dataset, source_samples):
-                for sample in source_samples:
-                    # Logic trích xuất thông tin thực thể (giữ nguyên từ trước)
-                    raw_tokens = sample['tokens']
-                    head_text, head_pos = self._extract_entity_info(raw_tokens, '[E11]', '[E12]')
-                    tail_text, tail_pos = self._extract_entity_info(raw_tokens, '[E21]', '[E22]')
-    
-                    if head_text is None or tail_text is None: continue
-    
-                    processed_sample = {
-                        'relation': relation_id,
-                        'tokens': [token for token in raw_tokens if token not in legacy_markers],
-                        'h': [head_text, 'ID_h', head_pos],
-                        't': [tail_text, 'ID_t', tail_pos],
-                    }
-                    tokenized = self.tokenize(processed_sample)
-                    target_dataset[relation_id].append(tokenized)
-    
-            # Xử lý và thêm vào các tập dữ liệu tương ứng
-        process_and_append(train_dataset, train_samples)
-        process_and_append(val_dataset, val_samples)
-        process_and_append(test_dataset, test_samples)
+
+        
+                # Xử lý và thêm vào các tập dữ liệu tương ứng
+            process_and_append(train_dataset, train_samples)
+            process_and_append(val_dataset, val_samples)
+            process_and_append(test_dataset, test_samples)
     
         # Lưu vào cache
         datas_to_save = {'train': train_dataset, 'valid': val_dataset, 'test': test_dataset}
