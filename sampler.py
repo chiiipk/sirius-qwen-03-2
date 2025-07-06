@@ -147,7 +147,6 @@ class data_sampler_CFRL(object):
         return save_path
 
     def _extract_entity_info(tokens, start_marker, end_marker):
-    """Trích xuất text và vị trí của một thực thể từ danh sách token."""
         try:
             start_idx = tokens.index(start_marker)
             end_idx = tokens.index(end_marker)
