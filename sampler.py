@@ -109,6 +109,38 @@ class data_sampler_CFRL(object):
             config.relation_file = os.path.join(config.data_path, "id2rel_tacred.json")
             config.relation_description = os.path.join(config.data_path, config.task_name, "relation_description.txt")
 
+    # Dán đoạn code này vào bên trong class data_sampler_CFRL trong file sampler.py
+
+    def _temp_datapath(self):
+        """
+        Tạo đường dẫn file cache để lưu dữ liệu đã được xử lý.
+        Tên file sẽ bao gồm tên task, pattern, và seed để đảm bảo mỗi
+        cấu hình thử nghiệm có một file cache riêng.
+        """
+        # Tạo thư mục cache chính nếu chưa có
+        cache_root = os.path.join('data_cache')
+        if not os.path.exists(cache_root):
+            os.makedirs(cache_root, exist_ok=True)
+
+        # Tạo thư mục con cho từng task
+        task_dir = os.path.join(cache_root, self.config.task_name)
+        if not os.path.exists(task_dir):
+            os.makedirs(task_dir, exist_ok=True)
+            
+        # Tạo tên file cache dựa trên các tham số
+        # Ví dụ: FewRel_hybridprompt_k5_seed2021_full_data.pkl
+        file_name = (
+            f"{self.config.task_name}_"
+            f"{self.config.pattern}_"
+            f"k{self.config.num_k}_" # Thêm num_k vào để phân biệt các lần chạy few-shot
+            f"seed{self.seed}_"
+            f"full_data.pkl" # Đánh dấu đây là dữ liệu được chia theo tỷ lệ
+        )
+        
+        save_path = os.path.join(task_dir, file_name)
+        print(f"Đường dẫn file cache được tạo: {save_path}")
+        return save_path
+
     def set_seed(self, seed):
         if seed is not None:
             self.seed = seed
