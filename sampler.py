@@ -33,28 +33,7 @@ def get_tokenizer(config):
 
     return tokenizer
 
-def _extract_entity_info(tokens, start_marker, end_marker):
-    """Trích xuất text và vị trí của một thực thể từ danh sách token."""
-    try:
-        start_idx = tokens.index(start_marker)
-        end_idx = tokens.index(end_marker)
-        
-        # Text của thực thể
-        entity_text = " ".join(tokens[start_idx + 1:end_idx])
-        
-        # Vị trí của thực thể trong câu *sau khi đã loại bỏ các marker*
-        # Đây là bước quan trọng để các pattern khác hoạt động đúng
-        offset = 0
-        if start_marker in ['[E11]', '[E21]']: offset += 1
-        if start_marker == '[E21]': offset += 2 # Vì có [E11] và [E12] đứng trước
-            
-        clean_start = start_idx - offset
-        clean_end = end_idx - offset - 1
-        
-        return entity_text, [[clean_start, clean_end]]
 
-    except ValueError:
-        return None, None
 
 
 
@@ -166,6 +145,29 @@ class data_sampler_CFRL(object):
         save_path = os.path.join(task_dir, file_name)
         print(f"Đường dẫn file cache được tạo: {save_path}")
         return save_path
+
+    def _extract_entity_info(tokens, start_marker, end_marker):
+    """Trích xuất text và vị trí của một thực thể từ danh sách token."""
+    try:
+        start_idx = tokens.index(start_marker)
+        end_idx = tokens.index(end_marker)
+        
+        # Text của thực thể
+        entity_text = " ".join(tokens[start_idx + 1:end_idx])
+        
+        # Vị trí của thực thể trong câu *sau khi đã loại bỏ các marker*
+        # Đây là bước quan trọng để các pattern khác hoạt động đúng
+        offset = 0
+        if start_marker in ['[E11]', '[E21]']: offset += 1
+        if start_marker == '[E21]': offset += 2 # Vì có [E11] và [E12] đứng trước
+            
+        clean_start = start_idx - offset
+        clean_end = end_idx - offset - 1
+        
+        return entity_text, [[clean_start, clean_end]]
+
+    except ValueError:
+        return None, None
 
     def set_seed(self, seed):
         if seed is not None:
