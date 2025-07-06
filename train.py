@@ -136,15 +136,41 @@ class Manager(object):
                 # ... (Phần còn lại của hàm train_model giữ nguyên không đổi)
                 # ...
 
-                with torch.no_grad():
-                    if not list_seen_des_tokens: continue
-                    rep_seen_des_list = [encoder({'ids': torch.tensor([d['ids']]).to(self.config.device), 'mask': torch.tensor([d['mask']]).to(self.config.device)}, is_des=True) for d in list_seen_des_tokens]
-                    if not rep_seen_des_list: continue
-                    rep_seen_des = torch.cat(rep_seen_des_list)
-                    clusters, clusters_centroids = self.get_cluster_and_centroids(rep_seen_des)
+# Trong file train.py, bên trong hàm train_model
 
-                relationid2_clustercentroids = {self.rel2id[rel]: clusters_centroids[clusters[idx]] for idx, rel in enumerate(seen_relations)}
-                relation_2_cluster = {self.rel2id[rel]: clusters[idx] for idx, rel in enumerate(seen_relations)}
+                # ... (code phía trên đến rep_des_2 = ...)
+
+                with torch.no_grad():
+                    # ### SỬA LỖI VÀ TỐI ƯU HÓA ###
+                    # list_seen_des_tokens là một BatchEncoding, không phải list.
+                    # Kiểm tra xem nó có hợp lệ không.
+                    if list_seen_des_tokens is None or 'input_ids' not in list_seen_des_tokens:
+                        # Nếu không có mô tả nào để gom cụm, bỏ qua phần này
+                        clusters_centroids = {}
+                        rep_seen_des = torch.tensor([]) # Tensor rỗng
+                    else:
+                        # Tạo dictionary chuẩn hóa để truyền vào encoder
+                        des_batch_to_cluster = {
+                            'ids': list_seen_des_tokens['input_ids'].to(self.config.device),
+                            'mask': list_seen_des_tokens['attention_mask'].to(self.config.device)
+                        }
+                        
+                        # Encoder bây giờ nhận một batch hoàn chỉnh, hiệu quả hơn
+                        # và không còn vòng lặp for nữa.
+                        rep_seen_des = encoder(des_batch_to_cluster, is_des=True)
+                        clusters, clusters_centroids = self.get_cluster_and_centroids(rep_seen_des)
+
+                # Kiểm tra nếu gom cụm không thành công (ví dụ do chỉ có 1 mô tả)
+                if not clusters_centroids:
+                    # Nếu không có cụm nào, ta không thể tính loss3,
+                    # nên cần xử lý hoặc bỏ qua các bước tiếp theo
+                    # (Tạm thời bỏ qua batch này để đơn giản hóa)
+                    print("Cảnh báo: Không thể tạo cụm, bỏ qua batch.")
+                    continue
+                
+                relationid2_clustercentroids = {self.rel2id[rel]: clusters_centroids[clusters[idx]] for idx, rel in enumerate(seen_relations) if idx < len(clusters)}
+                relation_2_cluster = {self.rel2id[rel]: clusters[idx] for idx, rel in enumerate(seen_relations) if idx < len(clusters)}
+
 
                 loss1 = self.moment.contrastive_loss(hidden, labels, False, des=rep_des, relation_2_cluster=relation_2_cluster)
                 loss2 = self.moment.mutual_information_loss_cluster(hidden, rep_des, labels, temperature=self.args.temperature, relation_2_cluster=relation_2_cluster)
