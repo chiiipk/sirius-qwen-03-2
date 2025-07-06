@@ -256,9 +256,9 @@ class data_sampler_CFRL(object):
                     target_dataset[relation_id].append(tokenized)
     
             # Xử lý và thêm vào các tập dữ liệu tương ứng
-            process_and_append(train_dataset, train_samples)
-            process_and_append(val_dataset, val_samples)
-            process_and_append(test_dataset, test_samples)
+        process_and_append(train_dataset, train_samples)
+        process_and_append(val_dataset, val_samples)
+        process_and_append(test_dataset, test_samples)
     
         # Lưu vào cache
         datas_to_save = {'train': train_dataset, 'valid': val_dataset, 'test': test_dataset}
