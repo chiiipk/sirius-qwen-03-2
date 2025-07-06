@@ -77,6 +77,15 @@ class data_sampler_CFRL(object):
         self.rel2des, self.id2des = self._read_descriptions(self.config.relation_description)
         self.seen_descriptions = {}
         
+        # ### SỬA LỖI ###: Tạo save_data_path TRƯỚC khi gọi _read_data
+        save_data_path = self._temp_datapath()
+
+        # Bây giờ truyền cả 2 tham số vào
+        self.training_dataset, self.valid_dataset, self.test_dataset = self._read_data(
+            self.config.json_data_file, 
+            save_data_path
+        )
+        
         mid_dir = os.path.join(self.config.data_path, "_processed_cache")
         if not os.path.exists(mid_dir): os.makedirs(mid_dir, exist_ok=True)
         file_name = f"{self.config.task_name}_{self.config.pattern}_{config.prompt_len if 'prompt' in config.pattern else ''}_{self.config.seed}.pkl"
