@@ -326,7 +326,7 @@ class Manager(object):
                         if proto is not None:
                             des_text = seen_descriptions[rel][0]
                             tokenized_des = self.tokenizer(des_text, padding=True, truncation=True, max_length=self.config.max_length, return_tensors='pt')
-                            des_input = {'ids': tokenized_des['input_ids'].to(self.config.device), 'mask': tokenized_des['attention_mask'].to(self.config.device')}
+                            des_input = {'ids': tokenized_des['input_ids'].to(self.config.device), 'mask': tokenized_des['attention_mask'].to(self.config.device)}
                             des_rep = encoder(des_input, is_des=True)
                             
                             final_protos.append(proto)
