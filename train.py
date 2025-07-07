@@ -318,59 +318,59 @@ class Manager(object):
             # --- SỬA LỖI VÀ TỐI ƯU HÓA PHẦN ĐÁNH GIÁ ---
             final_protos, final_des_reps, final_relids = [], [], []
                     # ... (code để điền vào 3 list này giữ nguyên) ...
-        with torch.no_grad():
-            encoder.eval()
-            for rel in seen_relations:
-                if rel in memory_for_prototypes and rel in seen_descriptions:
-                    proto, _ = self.get_memory_proto(encoder, memory_for_prototypes[rel])
-                    if proto is not None:
-                        des_text = seen_descriptions[rel][0]
-                        tokenized_des = self.tokenizer(des_text, padding=True, truncation=True, max_length=self.config.max_length, return_tensors='pt')
-                        des_input = {'ids': tokenized_des['input_ids'].to(self.config.device), 'mask': tokenized_des['attention_mask'].to(self.config.device')}
-                        des_rep = encoder(des_input, is_des=True)
-                        
-                        final_protos.append(proto)
-                        final_des_reps.append(des_rep.cpu())
-                        final_relids.append(self.rel2id[rel])
-        
-        if not final_protos:
-            print("-> Không có prototype hợp lệ để đánh giá ở tác vụ này.")
-            continue
-        
-        seen_proto = torch.stack(final_protos)
-        rep_des = torch.cat(final_des_reps)
-        
-        # Chuẩn bị dữ liệu test
-        test_data_current_task = [item for rel in current_relations for item in test_data.get(rel, [])]
-        test_data_all_seen = [item for rel in seen_relations for item in historic_test_data.get(rel, [])]
-        
-        # --- Đánh giá trên tác vụ HIỆN TẠI ---
-        print("\n--- Đánh giá trên tác vụ hiện tại ---")
-        ac_cur, ac1_cur, ac2_cur = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, test_data_current_task, rep_des)
-        
-        # --- Đánh giá trên TOÀN BỘ lịch sử ---
-        print("\n--- Đánh giá trên toàn bộ các tác vụ đã thấy ---")
-        ac_total, ac1_total, ac2_total = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, test_data_all_seen, rep_des)
-        
-        # --- Cập nhật và in kết quả giống code mẫu ---
-        cur_acc_num.append(ac_cur); total_acc_num.append(ac_total)
-        cur_acc.append(f'{ac_cur:.4f}'); total_acc.append(f'{ac_total:.4f}')
-        print('\ncur_acc: ', cur_acc)
-        print('his_acc: ', total_acc)
-
-        cur_acc_num1.append(ac1_cur); total_acc_num1.append(ac1_total)
-        cur_acc1.append(f'{ac1_cur:.4f}'); total_acc1.append(f'{ac1_total:.4f}')
-        print('cur_acc des: ', cur_acc1)
-        print('his_acc des: ', total_acc1)
-
-        cur_acc_num2.append(ac2_cur); total_acc_num2.append(ac2_total)
-        cur_acc2.append(f'{ac2_cur:.4f}'); total_acc2.append(f'{ac2_total:.4f}')
-        print('cur_acc rrf: ', cur_acc2)
-        print('his_acc rrf: ', total_acc2)
+            with torch.no_grad():
+                encoder.eval()
+                for rel in seen_relations:
+                    if rel in memory_for_prototypes and rel in seen_descriptions:
+                        proto, _ = self.get_memory_proto(encoder, memory_for_prototypes[rel])
+                        if proto is not None:
+                            des_text = seen_descriptions[rel][0]
+                            tokenized_des = self.tokenizer(des_text, padding=True, truncation=True, max_length=self.config.max_length, return_tensors='pt')
+                            des_input = {'ids': tokenized_des['input_ids'].to(self.config.device), 'mask': tokenized_des['attention_mask'].to(self.config.device')}
+                            des_rep = encoder(des_input, is_des=True)
+                            
+                            final_protos.append(proto)
+                            final_des_reps.append(des_rep.cpu())
+                            final_relids.append(self.rel2id[rel])
+            
+            if not final_protos:
+                print("-> Không có prototype hợp lệ để đánh giá ở tác vụ này.")
+                continue
+            
+            seen_proto = torch.stack(final_protos)
+            rep_des = torch.cat(final_des_reps)
+            
+            # Chuẩn bị dữ liệu test
+            test_data_current_task = [item for rel in current_relations for item in test_data.get(rel, [])]
+            test_data_all_seen = [item for rel in seen_relations for item in historic_test_data.get(rel, [])]
+            
+            # --- Đánh giá trên tác vụ HIỆN TẠI ---
+            print("\n--- Đánh giá trên tác vụ hiện tại ---")
+            ac_cur, ac1_cur, ac2_cur = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, test_data_current_task, rep_des)
+            
+            # --- Đánh giá trên TOÀN BỘ lịch sử ---
+            print("\n--- Đánh giá trên toàn bộ các tác vụ đã thấy ---")
+            ac_total, ac1_total, ac2_total = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, test_data_all_seen, rep_des)
+            
+            # --- Cập nhật và in kết quả giống code mẫu ---
+            cur_acc_num.append(ac_cur); total_acc_num.append(ac_total)
+            cur_acc.append(f'{ac_cur:.4f}'); total_acc.append(f'{ac_total:.4f}')
+            print('\ncur_acc: ', cur_acc)
+            print('his_acc: ', total_acc)
     
-    torch.cuda.empty_cache()
-    # Trả về kết quả accuracy tổng hợp qua các tác vụ
-    return total_acc_num, total_acc_num1, total_acc_num2
+            cur_acc_num1.append(ac1_cur); total_acc_num1.append(ac1_total)
+            cur_acc1.append(f'{ac1_cur:.4f}'); total_acc1.append(f'{ac1_total:.4f}')
+            print('cur_acc des: ', cur_acc1)
+            print('his_acc des: ', total_acc1)
+    
+            cur_acc_num2.append(ac2_cur); total_acc_num2.append(ac2_total)
+            cur_acc2.append(f'{ac2_cur:.4f}'); total_acc2.append(f'{ac2_total:.4f}')
+            print('cur_acc rrf: ', cur_acc2)
+            print('his_acc rrf: ', total_acc2)
+        
+        torch.cuda.empty_cache()
+        # Trả về kết quả accuracy tổng hợp qua các tác vụ
+        return total_acc_num, total_acc_num1, total_acc_num2
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
