@@ -274,30 +274,59 @@ class Manager(object):
                 self.buffer.add_exemplars({rel_id: exemplars})
                 memory_for_prototypes[rel] = exemplars
 
+# Trong file train.py, bên trong hàm train()
+
+# ... (code đến sau vòng lặp for rel in current_relations: ... self.buffer.add_exemplars(...) )
+
+            # --- SỬA LỖI VÀ TỐI ƯU HÓA PHẦN ĐÁNH GIÁ ---
             final_protos, final_des_reps, final_relids = [], [], []
             with torch.no_grad():
                 encoder.eval()
+                # Lặp qua tất cả các quan hệ đã thấy để tạo prototype
                 for rel in seen_relations:
-                    if rel in memory_for_prototypes and rel in seen_des:
+                    # SỬA LỖI: Dùng `seen_descriptions` thay vì `seen_des`
+                    if rel in memory_for_prototypes and rel in seen_descriptions:
                         proto, _ = self.get_memory_proto(encoder, memory_for_prototypes[rel])
+                        
+                        # Chỉ xử lý nếu tạo được prototype
                         if proto is not None:
-                            des_dict = seen_des[rel]
-                            des_input = {'ids': torch.tensor([des_dict['ids']]).to(self.config.device), 
-                                         'mask': torch.tensor([des_dict['mask']]).to(self.config.device)}
+                            # Lấy mô tả và token hóa nó
+                            des_text = seen_descriptions[rel][0]
+                            tokenized_des = self.tokenizer(
+                                des_text, padding=True, truncation=True, 
+                                max_length=self.config.max_length, return_tensors='pt'
+                            )
+                            # Chuẩn hóa input cho encoder
+                            des_input = {
+                                'ids': tokenized_des['input_ids'].to(self.config.device),
+                                'mask': tokenized_des['attention_mask'].to(self.config.device)
+                            }
+                            # Lấy embedding của mô tả
                             des_rep = encoder(des_input, is_des=True)
+                            
+                            # Thêm các kết quả hợp lệ vào danh sách
                             final_protos.append(proto)
-                            final_des_reps.append(des_rep)
+                            final_des_reps.append(des_rep.cpu()) # Chuyển về CPU để cat sau này
                             final_relids.append(self.rel2id[rel])
             
-            if not final_protos: continue
+            # Nếu không có prototype nào để đánh giá, chuyển sang tác vụ tiếp theo
+            if not final_protos:
+                print("-> Không có prototype hợp lệ để đánh giá ở tác vụ này.")
+                continue
             
+            # Ghép các kết quả lại thành tensor lớn
             seen_proto = torch.stack(final_protos)
             rep_des = torch.cat(final_des_reps)
             
-            all_historic_test_data = [item for rel in seen_relations for item in historic_test_data[rel]]
+            all_historic_test_data = [item for rel in seen_relations for item in historic_test_data.get(rel, [])]
+            
+            # Gọi hàm đánh giá với dữ liệu đã được đồng bộ
             acc, acc1, acc2 = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, all_historic_test_data, rep_des)
+            
+            # Phần còn lại giữ nguyên
             total_acc.append(acc); total_acc1.append(acc1); total_acc2.append(acc2)
             print(f"-> Accuracy (Proto): {acc:.4f} | (Desc): {acc1:.4f} | (Combined): {acc2:.4f}")
+# ... (kết thúc hàm train)
 
         torch.cuda.empty_cache()
         return total_acc, total_acc1, total_acc2
