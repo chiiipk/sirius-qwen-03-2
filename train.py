@@ -192,59 +192,96 @@ class Manager(object):
                 self.moment.update_des(ind, hidden.detach().cpu().float(), rep_des.detach().cpu().float(), is_memory=False)
         print('')
 
+    # Trong lớp Manager
     def eval_encoder_proto_des(self, encoder, seen_proto, seen_relid, test_data, rep_des):
-        data_loader = get_data_loader(self.config, test_data, False, False, 16)
-        if not data_loader: return 0.0, 0.0, 0.0
+        # Lấy DataLoader. Sử dụng batch_size từ config hoặc mặc định là 16
+        batch_size = self.config.batch_size_eval if hasattr(self.config, 'batch_size_eval') else 16
+        data_loader = get_data_loader(self.config, test_data, shuffle=False, drop_last=False, batch_size=batch_size)
         
+        if not data_loader: 
+            return 0.0, 0.0, 0.0
+    
         corrects, corrects1, corrects2, total = 0.0, 0.0, 0.0, 0.0
         encoder.eval()
-        
+    
         for batch_num, (instance, label, _) in enumerate(data_loader):
             with torch.no_grad():
-                for k in instance.keys(): instance[k] = instance[k].to(self.config.device)
+                for k in instance.keys(): 
+                    instance[k] = instance[k].to(self.config.device)
                 hidden = encoder(instance)
-
+    
+            # Chuyển prototype và embedding mô tả sang cùng device
             seen_proto_gpu = seen_proto.to(hidden.device)
             rep_des_gpu = rep_des.to(hidden.device)
             
+            # --- Tính toán cho Prototype ---
             logits = self._cosine_similarity(hidden, seen_proto_gpu)
             pred = torch.tensor([seen_relid[i] for i in torch.argmax(logits.cpu(), dim=1)])
-            corrects += torch.eq(pred, label.cpu()).sum().item()
-            
+            correct = torch.eq(pred, label.cpu()).sum().item()
+            corrects += correct
+            acc = correct / label.size(0)
+    
+            # --- Tính toán cho Mô tả (Description) ---
             if rep_des_gpu.size(0) == seen_proto_gpu.size(0):
                 logits_des = self._cosine_similarity(hidden, rep_des_gpu)
                 pred1 = torch.tensor([seen_relid[i] for i in torch.argmax(logits_des.cpu(), dim=1)])
-                corrects1 += torch.eq(pred1, label.cpu()).sum().item()
+                correct1 = torch.eq(pred1, label.cpu()).sum().item()
+                corrects1 += correct1
+                acc1 = correct1 / label.size(0)
                 logits_rrf = logits + logits_des
-            else:
+            else: # Fallback nếu kích thước không khớp
+                corrects1 += correct # Gán tạm để không lỗi
+                acc1 = acc
                 logits_rrf = logits
-            
+    
+            # --- Tính toán cho Kết hợp (RRF) ---
             pred2 = torch.tensor([seen_relid[i] for i in torch.argmax(logits_rrf.cpu(), dim=1)])
-            corrects2 += torch.eq(pred2, label.cpu()).sum().item()
+            correct2 = torch.eq(pred2, label.cpu()).sum().item()
+            corrects2 += correct2
+            acc2 = correct2 / label.size(0)
+    
             total += label.size(0)
             
-        return (corrects/total, corrects1/total, corrects2/total) if total > 0 else (0.0, 0.0, 0.0)
+            # --- In kết quả theo từng batch ---
+            sys.stdout.write('[EVAL]      batch: {0:4} | acc: {1:6.2f}% | total acc: {2:6.2f}%   '.format(
+                batch_num, 100 * acc, 100 * (corrects / total)) + '\r')
+            sys.stdout.flush()
+        
+        # In kết quả cuối cùng cho từng phương pháp sau khi vòng lặp kết thúc
+        print('') # Thêm một dòng mới để không bị ghi đè
+        print('[EVAL-Proto] total acc: {0:6.2f}%'.format(100 * (corrects / total) if total > 0 else 0))
+        print('[EVAL-Desc]  total acc: {0:6.2f}%'.format(100 * (corrects1 / total) if total > 0 else 0))
+        print('[EVAL-RRF]   total acc: {0:6.2f}%'.format(100 * (corrects2 / total) if total > 0 else 0))
+    
+        return (corrects / total, corrects1 / total, corrects2 / total) if total > 0 else (0.0, 0.0, 0.0)
 
     # --- HÀM TRAIN CHÍNH ĐÃ ĐƯỢC HOÀN THIỆN ---
     def train(self):
-        # Khởi tạo sampler
+    # Khởi tạo sampler
         sampler = data_sampler_CFRL(config=self.config, seed=self.config.seed)
         
-        # ### SỬA LỖI ###: Lấy tokenizer từ sampler và truyền cho encoder
         self.tokenizer = sampler.tokenizer 
         self.id2rel, self.rel2id = sampler.id2rel, sampler.rel2id
         
-        # Truyền config vào encoder, encoder sẽ tự xử lý tokenizer và model
         encoder = EncodingModel(self.config)
         encoder.to(self.config.device)
         
-        total_acc, total_acc1, total_acc2 = [], [], []
+        # --- Khởi tạo các list lưu kết quả ---
+        # Dạng số float để tính toán
+        cur_acc_num, total_acc_num = [], []
+        cur_acc_num1, total_acc_num1 = [], []
+        cur_acc_num2, total_acc_num2 = [], []
+    
+        # Dạng chuỗi string đã định dạng để in
+        cur_acc, total_acc = [], []
+        cur_acc1, total_acc1 = [], []
+        cur_acc2, total_acc2 = [], []
+    
         memory_for_prototypes = {}
         
-        # `seen_descriptions` sẽ được lấy trực tiếp từ sampler
         for step, (training_data, _, test_data, current_relations, historic_test_data, seen_relations, seen_descriptions) in enumerate(sampler):
             print(f"\n{'='*20} BẮT ĐẦU TÁC VỤ {step + 1}/{sampler.task_length} {'='*20}")
-            
+                
             # Tạo list các mô tả đã được token hóa sẵn sàng cho việc gom cụm
             # Lấy mô tả đầu tiên của mỗi quan hệ đã thấy
             list_seen_des = [seen_descriptions[rel][0] for rel in seen_relations if rel in seen_descriptions and seen_descriptions[rel]]
@@ -280,56 +317,60 @@ class Manager(object):
 
             # --- SỬA LỖI VÀ TỐI ƯU HÓA PHẦN ĐÁNH GIÁ ---
             final_protos, final_des_reps, final_relids = [], [], []
-            with torch.no_grad():
-                encoder.eval()
-                # Lặp qua tất cả các quan hệ đã thấy để tạo prototype
-                for rel in seen_relations:
-                    # SỬA LỖI: Dùng `seen_descriptions` thay vì `seen_des`
-                    if rel in memory_for_prototypes and rel in seen_descriptions:
-                        proto, _ = self.get_memory_proto(encoder, memory_for_prototypes[rel])
+                    # ... (code để điền vào 3 list này giữ nguyên) ...
+        with torch.no_grad():
+            encoder.eval()
+            for rel in seen_relations:
+                if rel in memory_for_prototypes and rel in seen_descriptions:
+                    proto, _ = self.get_memory_proto(encoder, memory_for_prototypes[rel])
+                    if proto is not None:
+                        des_text = seen_descriptions[rel][0]
+                        tokenized_des = self.tokenizer(des_text, padding=True, truncation=True, max_length=self.config.max_length, return_tensors='pt')
+                        des_input = {'ids': tokenized_des['input_ids'].to(self.config.device), 'mask': tokenized_des['attention_mask'].to(self.config.device')}
+                        des_rep = encoder(des_input, is_des=True)
                         
-                        # Chỉ xử lý nếu tạo được prototype
-                        if proto is not None:
-                            # Lấy mô tả và token hóa nó
-                            des_text = seen_descriptions[rel][0]
-                            tokenized_des = self.tokenizer(
-                                des_text, padding=True, truncation=True, 
-                                max_length=self.config.max_length, return_tensors='pt'
-                            )
-                            # Chuẩn hóa input cho encoder
-                            des_input = {
-                                'ids': tokenized_des['input_ids'].to(self.config.device),
-                                'mask': tokenized_des['attention_mask'].to(self.config.device)
-                            }
-                            # Lấy embedding của mô tả
-                            des_rep = encoder(des_input, is_des=True)
-                            
-                            # Thêm các kết quả hợp lệ vào danh sách
-                            final_protos.append(proto)
-                            final_des_reps.append(des_rep.cpu()) # Chuyển về CPU để cat sau này
-                            final_relids.append(self.rel2id[rel])
-            
-            # Nếu không có prototype nào để đánh giá, chuyển sang tác vụ tiếp theo
-            if not final_protos:
-                print("-> Không có prototype hợp lệ để đánh giá ở tác vụ này.")
-                continue
-            
-            # Ghép các kết quả lại thành tensor lớn
-            seen_proto = torch.stack(final_protos)
-            rep_des = torch.cat(final_des_reps)
-            
-            all_historic_test_data = [item for rel in seen_relations for item in historic_test_data.get(rel, [])]
-            
-            # Gọi hàm đánh giá với dữ liệu đã được đồng bộ
-            acc, acc1, acc2 = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, all_historic_test_data, rep_des)
-            
-            # Phần còn lại giữ nguyên
-            total_acc.append(acc); total_acc1.append(acc1); total_acc2.append(acc2)
-            print(f"-> Accuracy (Proto): {acc:.4f} | (Desc): {acc1:.4f} | (Combined): {acc2:.4f}")
-# ... (kết thúc hàm train)
+                        final_protos.append(proto)
+                        final_des_reps.append(des_rep.cpu())
+                        final_relids.append(self.rel2id[rel])
+        
+        if not final_protos:
+            print("-> Không có prototype hợp lệ để đánh giá ở tác vụ này.")
+            continue
+        
+        seen_proto = torch.stack(final_protos)
+        rep_des = torch.cat(final_des_reps)
+        
+        # Chuẩn bị dữ liệu test
+        test_data_current_task = [item for rel in current_relations for item in test_data.get(rel, [])]
+        test_data_all_seen = [item for rel in seen_relations for item in historic_test_data.get(rel, [])]
+        
+        # --- Đánh giá trên tác vụ HIỆN TẠI ---
+        print("\n--- Đánh giá trên tác vụ hiện tại ---")
+        ac_cur, ac1_cur, ac2_cur = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, test_data_current_task, rep_des)
+        
+        # --- Đánh giá trên TOÀN BỘ lịch sử ---
+        print("\n--- Đánh giá trên toàn bộ các tác vụ đã thấy ---")
+        ac_total, ac1_total, ac2_total = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, test_data_all_seen, rep_des)
+        
+        # --- Cập nhật và in kết quả giống code mẫu ---
+        cur_acc_num.append(ac_cur); total_acc_num.append(ac_total)
+        cur_acc.append(f'{ac_cur:.4f}'); total_acc.append(f'{ac_total:.4f}')
+        print('\ncur_acc: ', cur_acc)
+        print('his_acc: ', total_acc)
 
-        torch.cuda.empty_cache()
-        return total_acc, total_acc1, total_acc2
+        cur_acc_num1.append(ac1_cur); total_acc_num1.append(ac1_total)
+        cur_acc1.append(f'{ac1_cur:.4f}'); total_acc1.append(f'{ac1_total:.4f}')
+        print('cur_acc des: ', cur_acc1)
+        print('his_acc des: ', total_acc1)
+
+        cur_acc_num2.append(ac2_cur); total_acc_num2.append(ac2_total)
+        cur_acc2.append(f'{ac2_cur:.4f}'); total_acc2.append(f'{ac2_total:.4f}')
+        print('cur_acc rrf: ', cur_acc2)
+        print('his_acc rrf: ', total_acc2)
+    
+    torch.cuda.empty_cache()
+    # Trả về kết quả accuracy tổng hợp qua các tác vụ
+    return total_acc_num, total_acc_num1, total_acc_num2
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
