@@ -210,7 +210,9 @@ class Moment:
     
         return supervised_contrastive_loss
     def mutual_information_loss_cluster(self, x_bert, x_stella, labels,  temperature=0.1,  relation_2_cluster = None):
-        mask = labels.unsqueeze(1) == labels.unsqueeze(0).float()
+        x_bert = x_bert.float()
+        x_stella = x_stella.float()
+        mask = labels.unsqueeze(1) == labels.unsqueeze(0)
         mask = mask.to(self.config.device)
         x_bert = F.normalize(x_bert, p=2, dim=1)
         x_stella = F.normalize(x_stella, p=2, dim=1)
