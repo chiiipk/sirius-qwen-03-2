@@ -8,8 +8,7 @@ from data_loader import get_data_loader
 from nltk import word_tokenize
 from retry import retry
 
-# --- BẮT ĐẦU PHẦN THÊM MỚI ---
-# Thêm hàm set_seed để đảm bảo tính tái lập cho các lần chạy
+
 def set_seed(seed):
     """
     Thiết lập seed cho các thư viện để đảm bảo kết quả có thể tái lập.
@@ -23,7 +22,7 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     print(f"--- Đã thiết lập seed: {seed} ---")
-# --- KẾT THÚC PHẦN THÊM MỚI ---
+
 
 
 class Moment:
@@ -49,7 +48,6 @@ class Moment:
         data_loader = get_data_loader(self.config, dataset, shuffle=False)
         if data_loader is None: return
     
-        # Chỉ xử lý cho tác vụ hiện tại, không phải memory
         if not is_memory:
             self.features = torch.zeros(datalen, self.config.encoder_output_size)
             self.features_des = torch.zeros(datalen, self.config.encoder_output_size)
@@ -58,39 +56,31 @@ class Moment:
     
             for step, (instance, labels, ind) in enumerate(data_loader):
                 with torch.no_grad():
-                    # Chuyển instance (câu) lên GPU
                     for k in instance.keys():
                         instance[k] = instance[k].to(self.config.device)
                     
-                    # Tính hidden state cho câu (định dạng đã đúng)
                     hidden = encoder(instance)
                     self.features[ind] = hidden.detach().cpu().float()
                     
-                    # --- PHẦN SỬA LỖI ---
-                    # Lấy văn bản mô tả
+
                     des_texts = [seen_descriptions.get(id2rel.get(label.item(), ''), [''])[0] for label in labels]
     
-                    # Tokenize mô tả
                     tokenized_des = tokenizer(
                         des_texts, padding='max_length', truncation=True, 
                         max_length=self.config.max_length, return_tensors='pt'
                     )
                     
-                    # **Tạo dictionary chuẩn hóa** thay vì dùng trực tiếp kết quả của tokenizer
                     batch_des_instance = {
                         'ids': tokenized_des['input_ids'].to(self.config.device),
                         'mask': tokenized_des['attention_mask'].to(self.config.device)
                     }
                     
-                    # Giờ đây encoder sẽ nhận đúng định dạng nó cần
                     hidden_des = encoder(batch_des_instance, is_des=True)
                     self.features_des[ind] = hidden_des.detach().cpu().float()
-                    # --- KẾT THÚC PHẦN SỬA LỖI ---
     
                     lbs.append(labels.cpu())
                     original_indices.append(ind.cpu())
             
-            # Nối các tensor lại
             self.labels = torch.cat(lbs)
         else:
             self.mem_samples = dataset
@@ -105,15 +95,11 @@ class Moment:
                     fea = hidden.detach().cpu().float() 
                     self.update(ind, fea, is_memory)
                     lbs.append(labels)
-            # --- SỬA LỖI ---: Xóa dòng lặp lại
-            # lbs.append(labels)
             lbs = torch.cat(lbs)
             self.mem_labels = lbs
-            # --- SỬA LỖI ---: Xóa dòng lặp lại
-            # self.mem_labels = lbs      
+    
 
-    # ... Các hàm còn lại của lớp Moment và các hàm GPT không cần thay đổi ...
-    # ... (contrastive_loss, mutual_information_loss_cluster, etc. remain the same)
+
     def update(self, ind, feature, is_memory=False):
         if not is_memory:
             self.features[ind] = feature
@@ -137,7 +123,6 @@ class Moment:
             fea = hidden.detach().cpu().data
             self.update(ind, fea, is_memory=True)
             
-    # ... (Các hàm còn lại của file giữ nguyên không đổi)
     def contrastive_loss(self, x, labels, is_memory=False, des=None, relation_2_cluster=None):
         '''
         x (B, H)
@@ -161,7 +146,6 @@ class Moment:
             ct_y = self.labels[sample_id]
     
     
-        # l2 normalize
         x = F.normalize(x, p=2, dim=1)
         ct_x = F.normalize(ct_x, p=2, dim=1)
         
@@ -172,7 +156,6 @@ class Moment:
             ct_x_des = F.normalize(ct_x_des, p=2, dim=1)
             t2 = torch.mm(des, ct_x_des.T)
         else:
-            # Nếu des là None, cần khởi tạo t2 để tránh lỗi
             t2 = torch.zeros_like(t1)
     
         zeros = (torch.zeros_like(t1)).to(self.config.device)
@@ -199,7 +182,6 @@ class Moment:
         mask_combined_neg = ~mask_combined_pos
         cardinality_per_samples = torch.sum(mask_combined_pos, dim=1)
         
-        # Tránh chia cho 0 nếu một mẫu không có positive pair nào trong batch
         cardinality_per_samples = torch.where(cardinality_per_samples == 0, 1, cardinality_per_samples)
     
         sum_temp = torch.sum(exp_dot_tempered_pos * mask_combined_pos, dim=1, keepdim=True) \
