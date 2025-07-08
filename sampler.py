@@ -217,7 +217,7 @@ class data_sampler_CFRL(object):
     def __iter__(self): return self
 
     def __next__(self):
-        if self.batch >= self.task_length: raise StopIteration()
+        if self.batch >= self.config.task_length: raise StopIteration()
         indexs = self.shuffle_index[self.config.rel_per_task*self.batch : self.config.rel_per_task*(self.batch+1)]
         self.batch += 1
         current_relations, cur_training_data, cur_valid_data, cur_test_data = [], {}, {}, {}
