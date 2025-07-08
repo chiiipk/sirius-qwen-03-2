@@ -280,7 +280,7 @@ class Manager(object):
         memory_for_prototypes = {}
         
         for step, (training_data, _, test_data, current_relations, historic_test_data, seen_relations, seen_descriptions) in enumerate(sampler):
-            print(f"\n{'='*20} BẮT ĐẦU TÁC VỤ {step + 1}/{sampler.task_length} {'='*20}")
+            print(f"\n{'='*20} BẮT ĐẦU TÁC VỤ {step + 1}/{sampler.config.task_length} {'='*20}")
                 
             # Tạo list các mô tả đã được token hóa sẵn sàng cho việc gom cụm
             # Lấy mô tả đầu tiên của mỗi quan hệ đã thấy
