@@ -41,42 +41,81 @@ class data_sampler_CFRL(object):
 
     # Trong file sampler.py, thay thế hàm __init__ cũ bằng hàm này
 
+# Trong file sampler.py, thay thế __init__ cũ bằng __init__ này
+
     def __init__(self, config, seed=None):
         self.config = config
         self.seed = seed
 
-        # --- BƯỚC 1: Cấu hình đường dẫn động dựa trên task_name ---
-        self._configure_paths()
+        # BƯỚC 1: Tự động cấu hình MỌI THỨ dựa trên task_name
+        # Hàm này sẽ thiết lập các đường dẫn, rel_per_task, và task_length
+        self._configure_for_current_task()
 
-        # --- BƯỚC 2: Tải tokenizer ---
-        # (Giả sử bạn đã có hàm _initialize_tokenizer hoặc get_tokenizer)
+        # BƯỚC 2: Tải tokenizer, vì bây giờ mọi config đã sẵn sàng
         self.tokenizer = get_tokenizer(self.config)
 
-        # --- BƯỚC 3: Đọc thông tin quan hệ TRƯỚC TIÊN ---
+        # BƯỚC 3: Đọc các file dữ liệu cốt lõi
         self.id2rel, self.rel2id = self._read_relations(self.config.relation_file)
         self.config.num_of_relation = len(self.id2rel)
         
-        # --- BƯỚC 4: Bây giờ mới thiết lập seed, vì set_seed cần id2rel ---
+        self.rel2des, self.id2des = self._read_descriptions(self.config.relation_description)
+        
+        # BƯỚC 4: Thiết lập seed và thứ tự tác vụ ngẫu nhiên
+        # set_seed giờ đây có thể dùng self.config.task_length đã được tính
         self.set_seed(self.seed)
         
-        # --- BƯỚC 5: Đọc các thông tin còn lại ---
-        self.rel2des, self.id2des = self._read_descriptions(self.config.relation_description)
-        self.seen_descriptions = {}
-        
-        # Tạo đường dẫn cache
+        # BƯỚC 5: Đọc và xử lý dữ liệu chính
         save_data_path = self._temp_datapath()
-
-        # Đọc và xử lý dữ liệu từ file JSON đã được xác định ở bước 1
         self.training_dataset, self.valid_dataset, self.test_dataset = self._read_data(
-            self.config.json_data_file, # Thuộc tính này được tạo trong _configure_paths
+            self.config.json_data_file,
             save_data_path
         )
         
-        # --- BƯỚC 6: Phần còn lại của logic khởi tạo (không đổi) ---
+        # BƯỚC 6: Khởi tạo các biến để lặp qua các tác vụ
         self.batch = 0
-        self.task_length = len(self.id2rel) // self.config.rel_per_task
+        # self.task_length không cần tính lại ở đây nữa
         self.seen_relations = []
         self.history_test_data = {}
+        self.seen_descriptions = {}
+    # Trong file sampler.py, bên trong lớp data_sampler_CFRL
+
+    def _configure_for_current_task(self):
+        """
+        ### HÀM MỚI QUAN TRỌNG NHẤT ###
+        Tự động cấu hình tất cả các tham số dựa trên task_name:
+        - Đường dẫn file
+        - Số quan hệ mỗi tác vụ
+        - Tổng số tác vụ
+        """
+        task_name = self.config.task_name
+        data_root = self.config.data_root
+        
+        print(f"--- Đang tự động cấu hình cho dataset: {task_name} ---")
+        
+        if task_name == 'FewRel':
+            data_suffix = ''
+            total_relations = 80
+            # Theo bài báo, để có 10 tác vụ, mỗi tác vụ phải có 8 quan hệ
+            self.config.rel_per_task = 8
+            
+        elif task_name == 'TACRED':
+            data_suffix = '_tacred'
+            total_relations = 40
+            # Theo bài báo, để có 10 tác vụ, mỗi tác vụ phải có 4 quan hệ
+            self.config.rel_per_task = 4
+            
+        else:
+            raise ValueError(f"Dataset '{task_name}' không được hỗ trợ để cấu hình tự động.")
+
+        # Tính toán và ghi đè task_length vào config
+        self.config.task_length = total_relations // self.config.rel_per_task
+        print(f" -> Số quan hệ mỗi tác vụ được đặt là: {self.config.rel_per_task}")
+        print(f" -> Tổng số tác vụ được tính toán: {self.config.task_length}")
+
+        # Gán các đường dẫn file vào config
+        self.config.json_data_file = os.path.join(data_root, f"data_with_marker{data_suffix}.json")
+        self.config.relation_file = os.path.join(data_root, f"id2rel{data_suffix}.json")
+        self.config.relation_description = os.path.join(data_root, task_name, "relation_description.txt")
 
     def set_path(self, config):
         if config.task_name == 'FewRel':
