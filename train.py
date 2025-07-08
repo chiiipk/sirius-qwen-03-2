@@ -32,7 +32,6 @@ class Manager(object):
         self.tokenizer = None
         self.moment = None
 
-    # --- CÁC HÀM HỖ TRỢ ---
     def _cosine_similarity(self, x1, x2):
         x2_aligned = x2.to(device=x1.device, dtype=x1.dtype)
         x1_norm = F.normalize(x1, p=2, dim=1)
@@ -61,7 +60,6 @@ class Manager(object):
         centroids = {cid: torch.mean(embeddings[clusters == cid], dim=0) for cid in np.unique(clusters)}
         return clusters, centroids
 
-    # --- HÀM SELECT_MEMORY ĐÃ ĐƯỢC HOÀN THIỆN ---
     def select_memory(self, encoder, dataset):
         N, M = len(dataset), self.config.memory_size
         if N == 0: return []
@@ -91,8 +89,6 @@ class Manager(object):
                 distances[sel_index, :] = np.inf
         return mem_set
 
-    # --- HÀM TRAIN_MODEL ĐÃ ĐƯỢC HOÀN THIỆN ---
-# Trong file train.py, bên trong lớp Manager
 
     def train_model(self, encoder, training_data, seen_descriptions, seen_relations, list_seen_des_tokens):
         # Các dòng khởi tạo data_loader, optimizer, etc. giữ nguyên
@@ -107,9 +103,7 @@ class Manager(object):
             for batch_num, (instance, labels, ind) in enumerate(data_loader):
                 optimizer.zero_grad()
                 for k in instance.keys(): instance[k] = instance[k].to(self.config.device)
-                
-                # --- PHẦN SỬA LỖI ---
-                # Lấy văn bản mô tả cho các nhãn trong batch
+              
                 des_texts = [seen_descriptions.get(self.id2rel.get(label.item(), ''), [''])[0] for label in labels]
 
                 # Tokenize mô tả
@@ -126,24 +120,15 @@ class Manager(object):
                     'ids': tokenized_des['input_ids'].to(self.config.device),
                     'mask': tokenized_des['attention_mask'].to(self.config.device)
                 }
-                # --- KẾT THÚC PHẦN SỬA LỖI ---
-                
-                # Giờ đây các lệnh gọi encoder sẽ nhận đúng định dạng
+
                 hidden = encoder(instance)
                 rep_des = encoder(batch_des_instance, is_des=True)
                 rep_des_2 = encoder(batch_des_instance, is_des=True)
 
-                # ... (Phần còn lại của hàm train_model giữ nguyên không đổi)
-                # ...
-
-# Trong file train.py, bên trong hàm train_model
-
-                # ... (code phía trên đến rep_des_2 = ...)
+  
 
                 with torch.no_grad():
-                    # ### SỬA LỖI VÀ TỐI ƯU HÓA ###
-                    # list_seen_des_tokens là một BatchEncoding, không phải list.
-                    # Kiểm tra xem nó có hợp lệ không.
+                  
                     if list_seen_des_tokens is None or 'input_ids' not in list_seen_des_tokens:
                         # Nếu không có mô tả nào để gom cụm, bỏ qua phần này
                         clusters_centroids = {}
@@ -192,7 +177,7 @@ class Manager(object):
                 self.moment.update_des(ind, hidden.detach().cpu().float(), rep_des.detach().cpu().float(), is_memory=False)
         print('')
 
-    # Trong lớp Manager
+
     def eval_encoder_proto_des(self, encoder, seen_proto, seen_relid, test_data, rep_des):
         # Lấy DataLoader. Sử dụng batch_size từ config hoặc mặc định là 16
         batch_size = self.config.batch_size_eval if hasattr(self.config, 'batch_size_eval') else 16
@@ -210,18 +195,18 @@ class Manager(object):
                     instance[k] = instance[k].to(self.config.device)
                 hidden = encoder(instance)
     
-            # Chuyển prototype và embedding mô tả sang cùng device
+
             seen_proto_gpu = seen_proto.to(hidden.device)
             rep_des_gpu = rep_des.to(hidden.device)
             
-            # --- Tính toán cho Prototype ---
+            # --- Prototype ---
             logits = self._cosine_similarity(hidden, seen_proto_gpu)
             pred = torch.tensor([seen_relid[i] for i in torch.argmax(logits.cpu(), dim=1)])
             correct = torch.eq(pred, label.cpu()).sum().item()
             corrects += correct
             acc = correct / label.size(0)
     
-            # --- Tính toán cho Mô tả (Description) ---
+            # --- Description ---
             if rep_des_gpu.size(0) == seen_proto_gpu.size(0):
                 logits_des = self._cosine_similarity(hidden, rep_des_gpu)
                 pred1 = torch.tensor([seen_relid[i] for i in torch.argmax(logits_des.cpu(), dim=1)])
@@ -234,7 +219,7 @@ class Manager(object):
                 acc1 = acc
                 logits_rrf = logits
     
-            # --- Tính toán cho Kết hợp (RRF) ---
+            # --- RRF ---
             pred2 = torch.tensor([seen_relid[i] for i in torch.argmax(logits_rrf.cpu(), dim=1)])
             correct2 = torch.eq(pred2, label.cpu()).sum().item()
             corrects2 += correct2
@@ -242,22 +227,19 @@ class Manager(object):
     
             total += label.size(0)
             
-            # --- In kết quả theo từng batch ---
+
             sys.stdout.write('[EVAL]      batch: {0:4} | acc: {1:6.2f}% | total acc: {2:6.2f}%   '.format(
                 batch_num, 100 * acc, 100 * (corrects / total)) + '\r')
             sys.stdout.flush()
         
-        # In kết quả cuối cùng cho từng phương pháp sau khi vòng lặp kết thúc
-        print('') # Thêm một dòng mới để không bị ghi đè
+        print('') 
         print('[EVAL-Proto] total acc: {0:6.2f}%'.format(100 * (corrects / total) if total > 0 else 0))
         print('[EVAL-Desc]  total acc: {0:6.2f}%'.format(100 * (corrects1 / total) if total > 0 else 0))
         print('[EVAL-RRF]   total acc: {0:6.2f}%'.format(100 * (corrects2 / total) if total > 0 else 0))
     
         return (corrects / total, corrects1 / total, corrects2 / total) if total > 0 else (0.0, 0.0, 0.0)
 
-    # --- HÀM TRAIN CHÍNH ĐÃ ĐƯỢC HOÀN THIỆN ---
     def train(self):
-    # Khởi tạo sampler
         sampler = data_sampler_CFRL(config=self.config, seed=self.config.seed)
         
         self.tokenizer = sampler.tokenizer 
@@ -266,13 +248,10 @@ class Manager(object):
         encoder = EncodingModel(self.config)
         encoder.to(self.config.device)
         
-        # --- Khởi tạo các list lưu kết quả ---
-        # Dạng số float để tính toán
         cur_acc_num, total_acc_num = [], []
         cur_acc_num1, total_acc_num1 = [], []
         cur_acc_num2, total_acc_num2 = [], []
     
-        # Dạng chuỗi string đã định dạng để in
         cur_acc, total_acc = [], []
         cur_acc1, total_acc1 = [], []
         cur_acc2, total_acc2 = [], []
@@ -299,10 +278,8 @@ class Manager(object):
             
             if combined_training_data:
                 self.moment = Moment(self.config)
-                # ### SỬA LỖI ###: Truyền thêm tokenizer và seen_descriptions vào init_moment
                 self.moment.init_moment(encoder, self.tokenizer, combined_training_data, seen_descriptions, self.id2rel)
                 
-                # `train_model` giờ nhận `seen_descriptions` và `tokenized_list_seen_des`
                 self.train_model(encoder, combined_training_data, seen_descriptions, seen_relations, tokenized_list_seen_des)
 
             for rel in current_relations:
@@ -311,13 +288,8 @@ class Manager(object):
                 self.buffer.add_exemplars({rel_id: exemplars})
                 memory_for_prototypes[rel] = exemplars
 
-# Trong file train.py, bên trong hàm train()
 
-# ... (code đến sau vòng lặp for rel in current_relations: ... self.buffer.add_exemplars(...) )
-
-            # --- SỬA LỖI VÀ TỐI ƯU HÓA PHẦN ĐÁNH GIÁ ---
             final_protos, final_des_reps, final_relids = [], [], []
-                    # ... (code để điền vào 3 list này giữ nguyên) ...
             with torch.no_grad():
                 encoder.eval()
                 for rel in seen_relations:
@@ -340,19 +312,15 @@ class Manager(object):
             seen_proto = torch.stack(final_protos)
             rep_des = torch.cat(final_des_reps)
             
-            # Chuẩn bị dữ liệu test
             test_data_current_task = [item for rel in current_relations for item in test_data.get(rel, [])]
             test_data_all_seen = [item for rel in seen_relations for item in historic_test_data.get(rel, [])]
             
-            # --- Đánh giá trên tác vụ HIỆN TẠI ---
             print("\n--- Đánh giá trên tác vụ hiện tại ---")
             ac_cur, ac1_cur, ac2_cur = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, test_data_current_task, rep_des)
             
-            # --- Đánh giá trên TOÀN BỘ lịch sử ---
             print("\n--- Đánh giá trên toàn bộ các tác vụ đã thấy ---")
             ac_total, ac1_total, ac2_total = self.eval_encoder_proto_des(encoder, seen_proto, final_relids, test_data_all_seen, rep_des)
             
-            # --- Cập nhật và in kết quả giống code mẫu ---
             cur_acc_num.append(ac_cur); total_acc_num.append(ac_total)
             cur_acc.append(f'{ac_cur:.4f}'); total_acc.append(f'{ac_total:.4f}')
             print('\ncur_acc: ', cur_acc)
@@ -369,7 +337,6 @@ class Manager(object):
             print('his_acc rrf: ', total_acc2)
         
         torch.cuda.empty_cache()
-        # Trả về kết quả accuracy tổng hợp qua các tác vụ
         return total_acc_num, total_acc_num1, total_acc_num2
 
 if __name__ == '__main__':
