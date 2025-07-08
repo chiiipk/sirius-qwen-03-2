@@ -7,14 +7,6 @@ class Config(ConfigParser):
         
         raw_config = ConfigParser()
         read_ok = raw_config.read(config_file, encoding='utf-8')
-        
-        # if not read_ok:
-        #     print(f"\n!!! LỖI:  '{config_file}'.\n")
-        #     raise FileNotFoundError(f"Không tìm thấy file cấu hình: {config_file}")
-
-        # if not raw_config.sections():
-        #     print(f"\n!!! LỖI: File cấu hình '{config_file}' bị trống hoặc không hợp lệ.\n")
-        #     raise ValueError(f"File cấu hình không hợp lệ: {config_file}")
             
         print("----- Đọc cấu hình thành công. Đang xử lý giá trị... -----")
         self.cast_values(raw_config)
